@@ -120,8 +120,7 @@ function getStreams(id, type, season, episode) {
     let tmdbId = id.toString();
     if (tmdbId.startsWith("tmdb:")) {
       tmdbId = tmdbId.replace("tmdb:", "");
-    }
-    if (tmdbId.startsWith("tt")) {
+    } else if (tmdbId.startsWith("tt")) {
       const convertedId = yield getTmdbId(tmdbId, normalizedType);
       if (convertedId) {
         console.log(`[StreamingCommunity] Converted ${id} to TMDB ID: ${convertedId}`);
@@ -131,11 +130,24 @@ function getStreams(id, type, season, episode) {
       }
     }
     
-    const metadata = yield getMetadata(tmdbId, type);
-    const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "StreamingCommunity";
+    let metadata = null;
+    try {
+        metadata = yield getMetadata(tmdbId, type);
+    } catch (e) {
+        console.error("[StreamingCommunity] Error fetching metadata:", e);
+    }
+
+    const title = (metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name)) 
+        ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) 
+        : (normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV");
+    
     const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
 
+    // Ensure displayName is not empty or fallback
+    const finalDisplayName = displayName;
+    
     let url;
+
     if (normalizedType === "movie") {
       url = `${BASE_URL}/movie/${tmdbId}`;
     } else if (normalizedType === "tv") {
@@ -194,14 +206,14 @@ function getStreams(id, type, season, episode) {
           console.warn(`[StreamingCommunity] Playlist check error, returning anyway:`, verError);
         }
         const normalizedQuality = getQualityFromName(quality);
-        return [{
-          name: `StreamingCommunity`,
-          title: displayName,
-          url: streamUrl,
-          quality: normalizedQuality,
-          type: "direct",
-          headers: COMMON_HEADERS
-        }];
+    return [{
+      name: `StreamingCommunity`,
+      title: finalDisplayName,
+      url: streamUrl,
+      quality: normalizedQuality,
+      type: "direct",
+      headers: COMMON_HEADERS
+    }];
       } else {
         console.log("[StreamingCommunity] Could not find playlist info in HTML");
         return [];

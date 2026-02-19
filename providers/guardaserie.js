@@ -98,7 +98,7 @@ function unPack(p, a, c, k, e, d) {
       d[e(c)] = k[c] || e(c);
     }
     k = [function(e2) {
-      return d[e2];
+      return d[e2] || e2;
     }];
     e = function() {
       return "\\w+";
@@ -279,9 +279,16 @@ function getStreams(id, type, season, episode) {
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
       }
-      const showInfo = yield getShowInfo(tmdbId, type);
+      
+      let showInfo = null;
+      try {
+          showInfo = yield getShowInfo(tmdbId, type);
+      } catch (e) {
+          console.error("[Guardaserie] Error fetching show info:", e);
+      }
+      
       if (!showInfo) return [];
-      const title = showInfo.name || showInfo.original_name;
+      const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
       const year = showInfo.first_air_date ? showInfo.first_air_date.split("-")[0] : "";
       console.log(`[Guardaserie] Searching for: ${title} (${year})`);
       const params = new URLSearchParams();

@@ -285,8 +285,16 @@ function getStreams(id, type, season, episode) {
       else return [];
     }
     
-    const metadata = yield getMetadata(cleanId, type);
-    const title = metadata ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) : "GuardaHD";
+    let metadata = null;
+    try {
+        metadata = yield getMetadata(cleanId, type);
+    } catch (e) {
+        console.error("[GuardaHD] Error fetching metadata:", e);
+    }
+
+    const title = (metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name)) 
+        ? (metadata.title || metadata.name || metadata.original_title || metadata.original_name) 
+        : (normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV");
     
     let url;
     const normalizedType = String(type).toLowerCase();
@@ -318,6 +326,7 @@ function getStreams(id, type, season, episode) {
       while ((match = linkRegex.exec(html)) !== null) {
         links.push({ url: match[1], name: "Alternative" });
       }
+      
       const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
       const processUrl = (link) => __async(null, null, function* () {
         let streamUrl = link.url;

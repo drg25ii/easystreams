@@ -459,6 +459,7 @@ function getStreams(id, type, season, episode, showInfo) {
         console.log(`[EuroStreaming] Could not get show info for ${tmdbId}`);
         return [];
       }
+      const cleanTitle = fetchedShowInfo.name || fetchedShowInfo.title || fetchedShowInfo.original_name || fetchedShowInfo.original_title || "Serie TV";
       const titlesToTry = [];
       if (fetchedShowInfo.name) titlesToTry.push(fetchedShowInfo.name);
       if (fetchedShowInfo.title) titlesToTry.push(fetchedShowInfo.title);
@@ -544,10 +545,10 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
+                    streams.push({
+                      name: `EuroStreaming - ${name}`,
+                      title: displayName,
                         url: extracted.url,
                         headers: extracted.headers,
                         quality: normalizedQuality,
@@ -563,10 +564,10 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
+                    streams.push({
+                      name: `EuroStreaming - ${name}`,
+                      title: displayName,
                         url: extracted.url,
                         headers: extracted.headers,
                         quality: normalizedQuality,
@@ -582,10 +583,10 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
+                    streams.push({
+                      name: `EuroStreaming - ${name}`,
+                      title: displayName,
                         url: extracted,
                         quality: normalizedQuality,
                         type: "direct"
@@ -600,9 +601,9 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
+                        name: `EuroStreaming - ${name}`,
                         title: displayName,
                         url: extracted,
                         quality: normalizedQuality,
@@ -618,9 +619,9 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
+                        name: `EuroStreaming - ${name}`,
                         title: displayName,
                         url: extracted,
                         quality: normalizedQuality,
@@ -636,9 +637,9 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
+                        name: `EuroStreaming - ${name}`,
                         title: displayName,
                         url: extracted,
                         quality: normalizedQuality,
@@ -654,9 +655,9 @@ function getStreams(id, type, season, episode, showInfo) {
                       
                       const normalizedQuality = getQualityFromName(quality);
 
-                      const displayName = `${candidate.title} ${season}x${episode}`;
+                      const displayName = `${cleanTitle} ${season}x${episode}`;
                       streams.push({
-                        name: `EuroStreaming (${name})`,
+                        name: `EuroStreaming - ${name}`,
                         title: displayName,
                         url: extracted,
                         quality: normalizedQuality,
