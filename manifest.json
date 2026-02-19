@@ -1,7 +1,7 @@
 
 {
   "name": "Nuvio IT Providers",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "scrapers": [
     {
       "id": "nuvio-it-providers-eurostreaming",
