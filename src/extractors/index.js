@@ -5,6 +5,7 @@ const { extractStreamTape } = require('./streamtape');
 const { extractUqload } = require('./uqload');
 const { extractUpstream } = require('./upstream');
 const { extractVidoza } = require('./vidoza');
+const { extractVixCloud } = require('./vixcloud');
 const { USER_AGENT, unPack } = require('./common');
 
 module.exports = {
@@ -15,6 +16,7 @@ module.exports = {
   extractUqload,
   extractUpstream,
   extractVidoza,
+  extractVixCloud,
   USER_AGENT,
   unPack
 };

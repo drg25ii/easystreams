@@ -22,13 +22,16 @@ const streamingcommunity = require("./streamingcommunity");
 const guardahd = require("./guardahd");
 const eurostreaming = require("./eurostreaming");
 const guardaserie = require("./guardaserie");
+const animeunity = require("./animeunity");
 function getStreams(id, type, season, episode) {
   return __async(this, null, function* () {
     const streams = [];
-    const errors = [];
     const normalizedType = type.toLowerCase();
     console.log(`[MultiProvider] Requesting streams for ${id} (${type})`);
     const promises = [];
+    promises.push(
+      animeunity.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "AnimeUnity", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "AnimeUnity", error, status: "rejected" }))
+    );
     promises.push(
       streamingcommunity.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "StreamingCommunity", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "StreamingCommunity", error, status: "rejected" }))
     );

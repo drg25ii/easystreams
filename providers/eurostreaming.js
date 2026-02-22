@@ -366,6 +366,74 @@ var require_vidoza = __commonJS({
   }
 });
 
+// src/extractors/vixcloud.js
+var require_vixcloud = __commonJS({
+  "src/extractors/vixcloud.js"(exports2, module2) {
+    var { USER_AGENT: USER_AGENT2 } = require_common();
+    function extractVixCloud(url) {
+      return __async(this, null, function* () {
+        try {
+          const response = yield fetch(url, {
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": "https://www.animeunity.so/"
+            }
+          });
+          if (!response.ok) return null;
+          const html = yield response.text();
+          const streams = [];
+          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
+          const downloadMatch = downloadRegex.exec(html);
+          if (downloadMatch) {
+            const downloadUrl = downloadMatch[1];
+            let quality = "Unknown";
+            if (downloadUrl.includes("1080p")) quality = "1080p";
+            else if (downloadUrl.includes("720p")) quality = "720p";
+            else if (downloadUrl.includes("480p")) quality = "480p";
+            else if (downloadUrl.includes("360p")) quality = "360p";
+            streams.push({
+              url: downloadUrl,
+              quality,
+              type: "direct",
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": "https://vixcloud.co/"
+              }
+            });
+          }
+          const streamsRegex = /window\.streams\s*=\s*(\[{[^\]]+}\])/;
+          const streamsMatch = streamsRegex.exec(html);
+          if (streamsMatch) {
+            try {
+              const playlistData = JSON.parse(streamsMatch[1]);
+              for (const item of playlistData) {
+                if (item.url) {
+                  streams.push({
+                    url: item.url,
+                    quality: "Auto",
+                    type: "m3u8",
+                    headers: {
+                      "User-Agent": USER_AGENT2,
+                      "Referer": "https://vixcloud.co/"
+                    }
+                  });
+                }
+              }
+            } catch (e) {
+              console.error("[VixCloud] Failed to parse streams JSON:", e);
+            }
+          }
+          return streams;
+        } catch (e) {
+          console.error("[VixCloud] Extraction error:", e);
+          return [];
+        }
+      });
+    }
+    module2.exports = { extractVixCloud };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -376,6 +444,7 @@ var require_extractors = __commonJS({
     var { extractUqload: extractUqload2 } = require_uqload();
     var { extractUpstream } = require_upstream();
     var { extractVidoza: extractVidoza2 } = require_vidoza();
+    var { extractVixCloud } = require_vixcloud();
     var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
@@ -385,6 +454,7 @@ var require_extractors = __commonJS({
       extractUqload: extractUqload2,
       extractUpstream,
       extractVidoza: extractVidoza2,
+      extractVixCloud,
       USER_AGENT: USER_AGENT2,
       unPack: unPack2
     };
