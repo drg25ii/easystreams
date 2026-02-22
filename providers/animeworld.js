@@ -339,6 +339,9 @@ function searchAnime(query) {
         }
         if (href.includes("subita")) isDub = false;
         const isSub = !isDub;
+        if (isDub && !title.toUpperCase().includes("ITA")) {
+          title += " (ITA)";
+        }
         results.push({
           title,
           href,
@@ -576,10 +579,15 @@ function getStreams(id, type, season, episode) {
             if (infoRes.ok) {
               const infoData = yield infoRes.json();
               if (infoData.grabber) {
+                let quality = "auto";
+                if (infoData.grabber.includes("1080p")) quality = "1080p";
+                else if (infoData.grabber.includes("720p")) quality = "720p";
+                else if (infoData.grabber.includes("480p")) quality = "480p";
+                else if (infoData.grabber.includes("360p")) quality = "360p";
                 results.push({
                   server: "AnimeWorld " + (isDub ? "(ITA)" : "(SUB ITA)"),
                   url: infoData.grabber,
-                  quality: "auto",
+                  quality,
                   isM3U8: infoData.grabber.includes(".m3u8")
                 });
               }
