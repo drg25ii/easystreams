@@ -401,27 +401,41 @@ var require_vixcloud = __commonJS({
               }
             });
           }
-          const streamsRegex = /window\.streams\s*=\s*(\[{[^\]]+}\])/;
-          const streamsMatch = streamsRegex.exec(html);
-          if (streamsMatch) {
-            try {
-              const playlistData = JSON.parse(streamsMatch[1]);
-              for (const item of playlistData) {
-                if (item.url) {
-                  streams.push({
-                    url: item.url,
-                    quality: "Auto",
-                    type: "m3u8",
-                    headers: {
-                      "User-Agent": USER_AGENT2,
-                      "Referer": "https://vixcloud.co/"
-                    }
-                  });
-                }
-              }
-            } catch (e) {
-              console.error("[VixCloud] Failed to parse streams JSON:", e);
+          const tokenRegex = /'token':\s*'(\w+)'/;
+          const expiresRegex = /'expires':\s*'(\d+)'/;
+          const urlRegex = /url:\s*'([^']+)'/;
+          const fhdRegex = /window\.canPlayFHD\s*=\s*true/;
+          const tokenMatch = tokenRegex.exec(html);
+          const expiresMatch = expiresRegex.exec(html);
+          const urlMatch = urlRegex.exec(html);
+          const fhdMatch = fhdRegex.test(html);
+          if (tokenMatch && expiresMatch && urlMatch) {
+            const token = tokenMatch[1];
+            const expires = expiresMatch[1];
+            let serverUrl = urlMatch[1];
+            let finalUrl = "";
+            if (serverUrl.includes("?b=1")) {
+              finalUrl = `${serverUrl}&token=${token}&expires=${expires}`;
+            } else {
+              finalUrl = `${serverUrl}?token=${token}&expires=${expires}`;
             }
+            if (fhdMatch) {
+              finalUrl += "&h=1";
+            }
+            const parts = finalUrl.split("?");
+            finalUrl = parts[0] + ".m3u8";
+            if (parts.length > 1) {
+              finalUrl += "?" + parts.slice(1).join("?");
+            }
+            streams.push({
+              url: finalUrl,
+              quality: "Auto",
+              type: "m3u8",
+              headers: {
+                "User-Agent": USER_AGENT2,
+                "Referer": "https://vixcloud.co/"
+              }
+            });
           }
           return streams;
         } catch (e) {
