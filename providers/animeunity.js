@@ -504,6 +504,9 @@ function getMetadata(id, type) {
     try {
       const normalizedType = String(type).toLowerCase();
       let tmdbId = id;
+      if (String(id).startsWith("tmdb:")) {
+        tmdbId = String(id).replace("tmdb:", "");
+      }
       if (String(id).startsWith("tt")) {
         const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
         const findResponse = yield fetch(findUrl);
@@ -546,6 +549,23 @@ function calculateAbsoluteEpisode(metadata, season, episode) {
   }
   return absoluteEpisode;
 }
+var checkSimilarity = (candTitle, targetTitle) => {
+  if (!targetTitle) return false;
+  const normalize = (s) => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+  const t1 = normalize(candTitle);
+  const t2 = normalize(targetTitle);
+  if (t1.length < 2 || t2.length < 2) return false;
+  if (t1.includes(t2) || t2.includes(t1)) return true;
+  const w1 = t1.split(/\s+/).filter((w) => w.length > 2);
+  const w2 = t2.split(/\s+/).filter((w) => w.length > 2);
+  if (w1.length === 0 || w2.length === 0) return false;
+  let matches = 0;
+  for (const w of w2) {
+    if (w1.includes(w)) matches++;
+  }
+  const score = matches / w2.length;
+  return score >= 0.5;
+};
 function findBestMatch(candidates, title, originalTitle, season, metadata, options = {}) {
   if (!candidates || candidates.length === 0) return null;
   const isTv = !!metadata.name;
@@ -608,11 +628,26 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     const specialCandidates = filteredCandidates.filter((c) => specialTypes.includes(c.type));
     if (specialCandidates.length > 0) {
       const specialTitleMatch = specialCandidates.find((c) => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
-      if (specialTitleMatch) return specialTitleMatch;
-      return specialCandidates[0];
+      if (specialTitleMatch) {
+        if (checkSimilarity(specialTitleMatch.title, title) || checkSimilarity(specialTitleMatch.title, originalTitle)) {
+          return specialTitleMatch;
+        }
+      }
+      const firstSpecial = specialCandidates[0];
+      if (checkSimilarity(firstSpecial.title, title) || checkSimilarity(firstSpecial.title, originalTitle)) {
+        return firstSpecial;
+      }
     }
     const titleMatch = filteredCandidates.find((c) => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
-    if (titleMatch) return titleMatch;
+    if (titleMatch) {
+      if (checkSimilarity(titleMatch.title, title) || checkSimilarity(titleMatch.title, originalTitle)) {
+        return titleMatch;
+      }
+    }
+    const anyMatch = filteredCandidates.find((c) => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
+    if (anyMatch) return anyMatch;
+    console.log("[AnimeUnity] No season 0 match found passing similarity check");
+    return null;
   }
   const exactMatch = filteredCandidates.find((c) => {
     const t = (c.title || "").toLowerCase().trim();
@@ -641,6 +676,29 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
           }
         }
         if (subMatch) return subMatch;
+      }
+    }
+    const clean = (str) => str.replace(/\b(film|movie|the|and|or|of|in|on|at|to|a|an)\b/gi, "").replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim();
+    const normClean = clean(normTitle);
+    if (normClean.length > 3) {
+      const words = normClean.split(" ");
+      let bestCandidate = null;
+      let maxMatches = 0;
+      for (const c of filteredCandidates) {
+        const cTitle = (c.title || "").toLowerCase();
+        const cClean = clean(cTitle);
+        const cWords = cClean.split(" ");
+        let matches = 0;
+        for (const w of words) {
+          if (cWords.includes(w) || cTitle.includes(w)) matches++;
+        }
+        if (matches > maxMatches) {
+          maxMatches = matches;
+          bestCandidate = c;
+        }
+      }
+      if (bestCandidate && maxMatches >= words.length * 0.75) {
+        return bestCandidate;
       }
     }
   }
@@ -789,6 +847,12 @@ function getStreams(id, type, season, episode) {
         console.log(`[AnimeUnity] Standard search: ${title}`);
         candidates = yield searchAnime(title);
         if (candidates.length === 0 && isMovie) {
+          if (title.includes(" - ")) {
+            const colonTitle = title.replace(" - ", ": ");
+            console.log(`[AnimeUnity] Colon search: ${colonTitle}`);
+            const colonRes = yield searchAnime(colonTitle);
+            if (colonRes && colonRes.length > 0) candidates = candidates.concat(colonRes);
+          }
           if (title.includes(":")) {
             const parts = title.split(":");
             if (parts.length > 1) {
@@ -817,6 +881,12 @@ function getStreams(id, type, season, episode) {
             console.log(`[AnimeUnity] Movie query search: ${movieQuery}`);
             const movieRes = yield searchAnime(movieQuery);
             if (movieRes && movieRes.length > 0) candidates = candidates.concat(movieRes);
+            const simpleTitle = title.replace(/\bfilm\b/gi, "").replace(/-/g, "").replace(/\s+/g, " ").trim();
+            if (simpleTitle !== title && simpleTitle.length > 3) {
+              console.log(`[AnimeUnity] Simplified title search: ${simpleTitle}`);
+              const simpleRes = yield searchAnime(simpleTitle);
+              if (simpleRes && simpleRes.length > 0) candidates = candidates.concat(simpleRes);
+            }
           }
           candidates = candidates.filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i);
         }

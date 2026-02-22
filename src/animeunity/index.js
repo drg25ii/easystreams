@@ -9,6 +9,11 @@ async function getMetadata(id, type) {
         const normalizedType = String(type).toLowerCase();
         let tmdbId = id;
 
+        // Strip tmdb: prefix
+        if (String(id).startsWith("tmdb:")) {
+            tmdbId = String(id).replace("tmdb:", "");
+        }
+
         // If it's an IMDb ID, find the TMDB ID first
         if (String(id).startsWith("tt")) {
             const findUrl = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
@@ -54,6 +59,36 @@ function calculateAbsoluteEpisode(metadata, season, episode) {
     }
     return absoluteEpisode;
 }
+
+// Helper for similarity check
+const checkSimilarity = (candTitle, targetTitle) => {
+    if (!targetTitle) return false;
+    const normalize = s => String(s).toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    const t1 = normalize(candTitle);
+    const t2 = normalize(targetTitle);
+    
+    if (t1.length < 2 || t2.length < 2) return false;
+    
+    // Direct inclusion
+    if (t1.includes(t2) || t2.includes(t1)) return true;
+    
+    // Word overlap
+    const w1 = t1.split(/\s+/).filter(w => w.length > 2);
+    const w2 = t2.split(/\s+/).filter(w => w.length > 2);
+    
+    if (w1.length === 0 || w2.length === 0) return false;
+    
+    let matches = 0;
+    for (const w of w2) {
+        if (w1.includes(w)) matches++;
+    }
+    
+    const score = matches / w2.length;
+    // console.log(`[AnimeUnity] Similarity: "${t1}" vs "${t2}" -> score ${score} (matches: ${matches}/${w2.length})`);
+    
+    // Require at least 50% of target words to be in candidate
+    return score >= 0.5;
+};
 
 function findBestMatch(candidates, title, originalTitle, season, metadata, options = {}) {
     if (!candidates || candidates.length === 0) return null;
@@ -151,15 +186,34 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
         if (specialCandidates.length > 0) {
             // Try to find one with "Special" in title if multiple
             const specialTitleMatch = specialCandidates.find(c => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
-            if (specialTitleMatch) return specialTitleMatch;
+            if (specialTitleMatch) {
+                // Validate with similarity check
+                if (checkSimilarity(specialTitleMatch.title, title) || checkSimilarity(specialTitleMatch.title, originalTitle)) {
+                    return specialTitleMatch;
+                }
+            }
             
-            // Otherwise return the first special candidate (maybe sort by similarity?)
-            return specialCandidates[0];
+            // Otherwise return the first special candidate if it passes similarity
+            const firstSpecial = specialCandidates[0];
+            if (checkSimilarity(firstSpecial.title, title) || checkSimilarity(firstSpecial.title, originalTitle)) {
+                return firstSpecial;
+            }
         }
         
         // If no special type found, look for "Special" in title of any candidate
         const titleMatch = filteredCandidates.find(c => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
-        if (titleMatch) return titleMatch;
+        if (titleMatch) {
+            if (checkSimilarity(titleMatch.title, title) || checkSimilarity(titleMatch.title, originalTitle)) {
+                return titleMatch;
+            }
+        }
+        
+        // Fallback: Check similarity on all candidates
+        const anyMatch = filteredCandidates.find(c => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
+        if (anyMatch) return anyMatch;
+        
+        console.log("[AnimeUnity] No season 0 match found passing similarity check");
+        return null;
     }
 
     // 1. Try to find exact match (Title or Original Title)
@@ -201,6 +255,37 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                      
                      if (subMatch) return subMatch;
                 }
+        }
+        
+        // Fuzzy Match for Movies
+        const clean = (str) => str.replace(/\b(film|movie|the|and|or|of|in|on|at|to|a|an)\b/gi, "").replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim();
+        const normClean = clean(normTitle);
+        
+        if (normClean.length > 3) {
+            const words = normClean.split(" ");
+            
+            let bestCandidate = null;
+            let maxMatches = 0;
+            
+            for (const c of filteredCandidates) {
+                const cTitle = (c.title || "").toLowerCase();
+                const cClean = clean(cTitle);
+                const cWords = cClean.split(" ");
+                
+                let matches = 0;
+                for (const w of words) {
+                    if (cWords.includes(w) || cTitle.includes(w)) matches++;
+                }
+                
+                if (matches > maxMatches) {
+                    maxMatches = matches;
+                    bestCandidate = c;
+                }
+            }
+            
+            if (bestCandidate && maxMatches >= words.length * 0.75) {
+                 return bestCandidate;
+            }
         }
     }
 
@@ -390,6 +475,14 @@ async function getStreams(id, type, season, episode) {
 
              // Strategy 2.5: If type is movie and no results or just to be sure, try subtitle/movie variants
              if (candidates.length === 0 && isMovie) {
+                 // 0. Replace " - " with ": " (Common issue with TMDB titles like "One Piece Film - Red")
+                 if (title.includes(' - ')) {
+                     const colonTitle = title.replace(' - ', ': ');
+                     console.log(`[AnimeUnity] Colon search: ${colonTitle}`);
+                     const colonRes = await searchAnime(colonTitle);
+                     if (colonRes && colonRes.length > 0) candidates = candidates.concat(colonRes);
+                 }
+
                  if (title.includes(':')) {
                      const parts = title.split(':');
                      if (parts.length > 1) {
@@ -422,6 +515,15 @@ async function getStreams(id, type, season, episode) {
                       console.log(`[AnimeUnity] Movie query search: ${movieQuery}`);
                       const movieRes = await searchAnime(movieQuery);
                       if (movieRes && movieRes.length > 0) candidates = candidates.concat(movieRes);
+
+                      // Try simplified title (remove "Film", "-", "The Movie")
+                      // e.g. "One Piece Film - Red" -> "One Piece Red"
+                      const simpleTitle = title.replace(/\bfilm\b/gi, "").replace(/-/g, "").replace(/\s+/g, " ").trim();
+                      if (simpleTitle !== title && simpleTitle.length > 3) {
+                          console.log(`[AnimeUnity] Simplified title search: ${simpleTitle}`);
+                          const simpleRes = await searchAnime(simpleTitle);
+                          if (simpleRes && simpleRes.length > 0) candidates = candidates.concat(simpleRes);
+                      }
                  }
                  
                  // Remove duplicates
