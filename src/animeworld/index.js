@@ -1,4 +1,4 @@
-const { getTmdbFromKitsu } = require('../tmdb_helper.js');
+const { getTmdbFromKitsu, isAnime } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
 
 const BASE_URL = "https://www.animeworld.ac";
@@ -846,6 +846,11 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
         const metadata = providedMetadata || await getMetadata(id, type);
         if (!metadata) {
             console.error("[AnimeWorld] Metadata not found for", id);
+            return [];
+        }
+
+        if (!isAnime(metadata)) {
+            console.log(`[AnimeWorld] Skipped ${metadata.title} (Not an anime)`);
             return [];
         }
 

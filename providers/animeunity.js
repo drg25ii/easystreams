@@ -598,7 +598,7 @@ var require_tmdb_helper = __commonJS({
           }
           return { tmdbId, season };
         } catch (e) {
-          console.error("[Kitsu] Error converting ID:", e);
+          console.error("[TMDB Helper] Kitsu resolve error:", e);
           return null;
         }
       });
@@ -628,7 +628,23 @@ var require_tmdb_helper = __commonJS({
         }
       });
     }
-    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute };
+    function isAnime2(metadata) {
+      if (!metadata) return false;
+      const isAnimation = metadata.genres && metadata.genres.some((g) => g.id === 16 || g.name === "Animation" || g.name === "Animazione");
+      if (!isAnimation) return false;
+      const asianCountries = ["JP", "CN", "KR", "TW", "HK"];
+      const asianLangs = ["ja", "zh", "ko", "cn"];
+      let countries = [];
+      if (metadata.origin_country && Array.isArray(metadata.origin_country)) {
+        countries = metadata.origin_country;
+      } else if (metadata.production_countries && Array.isArray(metadata.production_countries)) {
+        countries = metadata.production_countries.map((c) => c.iso_3166_1);
+      }
+      const hasAsianCountry = countries.some((c) => asianCountries.includes(c));
+      const hasAsianLang = asianLangs.includes(metadata.original_language);
+      return hasAsianCountry || hasAsianLang;
+    }
+    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute, isAnime: isAnime2 };
   }
 });
 
@@ -685,7 +701,7 @@ ${pName}`;
 
 // src/animeunity/index.js
 var { extractVixCloud } = require_extractors();
-var { getTmdbFromKitsu } = require_tmdb_helper();
+var { getTmdbFromKitsu, isAnime } = require_tmdb_helper();
 var { formatStream } = require_formatter();
 var BASE_URL = "https://www.animeunity.so";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
@@ -1056,6 +1072,10 @@ function getStreams(id, type, season, episode) {
       const metadata = yield getMetadata(id, type);
       if (!metadata) {
         console.error("[AnimeUnity] Metadata not found for", id);
+        return [];
+      }
+      if (!isAnime(metadata)) {
+        console.log(`[AnimeUnity] Skipped ${metadata.title} (Not an anime)`);
         return [];
       }
       if (metadata.mappedSeason) {

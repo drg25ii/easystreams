@@ -57,7 +57,7 @@ async function getTmdbFromKitsu(kitsuId) {
             if (attributes.titles.en) titlesToTry.add(attributes.titles.en);
             if (attributes.titles.en_jp) titlesToTry.add(attributes.titles.en_jp);
             if (attributes.canonicalTitle) titlesToTry.add(attributes.canonicalTitle);
-            if (attributes.titles.ja_jp) titlesToTry.add(attributes.titles.ja_jp); // Sometimes original title helps? Maybe not on TMDB English search.
+            if (attributes.titles.ja_jp) titlesToTry.add(attributes.titles.ja_jp); 
             
             // Convert to array
             const titleList = Array.from(titlesToTry);
@@ -151,19 +151,13 @@ async function getTmdbFromKitsu(kitsuId) {
                 else if (title.match(/\sIII$/)) season = 3;
                 else if (title.match(/\sIV$/)) season = 4;
                 else if (title.match(/\sV$/)) season = 5;
-                
-                // If the Kitsu ID maps to a TVDB ID that is NOT the main series ID but a season ID?
-                // Hard to know without querying TVDB fully. 
-                // But usually the "find" by TVDB ID returns the main series TMDB ID.
-                
-                // If we found a season, great. If not, default to null (caller might assume 1).
             }
         }
 
         return { tmdbId, season };
 
     } catch (e) {
-        console.error("[Kitsu] Error converting ID:", e);
+        console.error("[TMDB Helper] Kitsu resolve error:", e);
         return null;
     }
 }
@@ -198,4 +192,31 @@ async function getSeasonEpisodeFromAbsolute(tmdbId, absoluteEpisode) {
     }
 }
 
-module.exports = { getTmdbFromKitsu, getSeasonEpisodeFromAbsolute };
+function isAnime(metadata) {
+    if (!metadata) return false;
+
+    // 1. Check Genre
+    // TMDB Genres: Animation (16)
+    const isAnimation = metadata.genres && metadata.genres.some(g => g.id === 16 || g.name === 'Animation' || g.name === 'Animazione');
+    if (!isAnimation) return false;
+
+    // 2. Check Country/Language
+    // We want to restrict to Asian animation (Anime/Donghua/Aeni)
+    const asianCountries = ['JP', 'CN', 'KR', 'TW', 'HK'];
+    const asianLangs = ['ja', 'zh', 'ko', 'cn'];
+
+    let countries = [];
+    if (metadata.origin_country && Array.isArray(metadata.origin_country)) {
+        countries = metadata.origin_country;
+    } else if (metadata.production_countries && Array.isArray(metadata.production_countries)) {
+        // production_countries is array of objects { iso_3166_1: "US", ... }
+        countries = metadata.production_countries.map(c => c.iso_3166_1);
+    }
+
+    const hasAsianCountry = countries.some(c => asianCountries.includes(c));
+    const hasAsianLang = asianLangs.includes(metadata.original_language);
+
+    return hasAsianCountry || hasAsianLang;
+}
+
+module.exports = { getTmdbFromKitsu, getSeasonEpisodeFromAbsolute, isAnime };

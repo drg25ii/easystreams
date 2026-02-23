@@ -1,5 +1,5 @@
 const { extractVixCloud } = require('../extractors');
-const { getTmdbFromKitsu } = require('../tmdb_helper.js');
+const { getTmdbFromKitsu, isAnime } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
 
 const BASE_URL = "https://www.animeunity.so";
@@ -508,6 +508,11 @@ async function getStreams(id, type, season, episode) {
         const metadata = await getMetadata(id, type);
         if (!metadata) {
             console.error("[AnimeUnity] Metadata not found for", id);
+            return [];
+        }
+
+        if (!isAnime(metadata)) {
+            console.log(`[AnimeUnity] Skipped ${metadata.title} (Not an anime)`);
             return [];
         }
 

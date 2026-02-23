@@ -598,7 +598,7 @@ var require_tmdb_helper = __commonJS({
           }
           return { tmdbId, season };
         } catch (e) {
-          console.error("[Kitsu] Error converting ID:", e);
+          console.error("[TMDB Helper] Kitsu resolve error:", e);
           return null;
         }
       });
@@ -628,7 +628,23 @@ var require_tmdb_helper = __commonJS({
         }
       });
     }
-    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute: getSeasonEpisodeFromAbsolute2 };
+    function isAnime(metadata) {
+      if (!metadata) return false;
+      const isAnimation = metadata.genres && metadata.genres.some((g) => g.id === 16 || g.name === "Animation" || g.name === "Animazione");
+      if (!isAnimation) return false;
+      const asianCountries = ["JP", "CN", "KR", "TW", "HK"];
+      const asianLangs = ["ja", "zh", "ko", "cn"];
+      let countries = [];
+      if (metadata.origin_country && Array.isArray(metadata.origin_country)) {
+        countries = metadata.origin_country;
+      } else if (metadata.production_countries && Array.isArray(metadata.production_countries)) {
+        countries = metadata.production_countries.map((c) => c.iso_3166_1);
+      }
+      const hasAsianCountry = countries.some((c) => asianCountries.includes(c));
+      const hasAsianLang = asianLangs.includes(metadata.original_language);
+      return hasAsianCountry || hasAsianLang;
+    }
+    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute: getSeasonEpisodeFromAbsolute2, isAnime };
   }
 });
 
