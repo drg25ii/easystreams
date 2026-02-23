@@ -803,6 +803,7 @@ function getTmdbIdFromImdb(imdbId, type) {
   });
 }
 function getStreams(id, type, season, episode) {
+  if (["movie"].includes(String(type).toLowerCase())) return [];
   return __async2(this, null, function* () {
     if (String(type).toLowerCase() === "movie") return [];
     try {

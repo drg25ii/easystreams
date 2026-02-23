@@ -819,6 +819,7 @@ function getMetadata(id, type) {
   });
 }
 function getStreams(id, type, season, episode) {
+  if (["series", "tv"].includes(String(type).toLowerCase())) return [];
   return __async2(this, null, function* () {
     let cleanId = id.toString();
     if (cleanId.startsWith("kitsu:")) {

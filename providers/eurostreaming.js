@@ -981,8 +981,8 @@ function verifyMoviePlayer(url, targetYear) {
   });
 }
 function getStreams(id, type, season, episode, showInfo) {
+  if (["movie"].includes(String(type).toLowerCase())) return [];
   return __async2(this, null, function* () {
-    if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
       let imdbId = null;
