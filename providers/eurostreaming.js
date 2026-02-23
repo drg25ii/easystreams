@@ -292,7 +292,7 @@ var require_uqload = __commonJS({
 var require_upstream = __commonJS({
   "src/extractors/upstream.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
-    function extractUpstream(url, refererBase = "https://upstream.to/") {
+    function extractUpstream2(url, refererBase = "https://upstream.to/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
@@ -332,7 +332,7 @@ var require_upstream = __commonJS({
         }
       });
     }
-    module2.exports = { extractUpstream };
+    module2.exports = { extractUpstream: extractUpstream2 };
   }
 });
 
@@ -456,7 +456,7 @@ var require_extractors = __commonJS({
     var { extractSuperVideo: extractSuperVideo2 } = require_supervideo();
     var { extractStreamTape: extractStreamTape2 } = require_streamtape();
     var { extractUqload: extractUqload2 } = require_uqload();
-    var { extractUpstream } = require_upstream();
+    var { extractUpstream: extractUpstream2 } = require_upstream();
     var { extractVidoza: extractVidoza2 } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
     var { USER_AGENT: USER_AGENT2, unPack: unPack2 } = require_common();
@@ -466,12 +466,136 @@ var require_extractors = __commonJS({
       extractSuperVideo: extractSuperVideo2,
       extractStreamTape: extractStreamTape2,
       extractUqload: extractUqload2,
-      extractUpstream,
+      extractUpstream: extractUpstream2,
       extractVidoza: extractVidoza2,
       extractVixCloud,
       USER_AGENT: USER_AGENT2,
       unPack: unPack2
     };
+  }
+});
+
+// src/tmdb_helper.js
+var require_tmdb_helper = __commonJS({
+  "src/tmdb_helper.js"(exports2, module2) {
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    function getTmdbFromKitsu2(kitsuId) {
+      return __async(this, null, function* () {
+        var _a, _b, _c, _d;
+        try {
+          const id = String(kitsuId).replace("kitsu:", "");
+          const mappingResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+          let mappingData = null;
+          if (mappingResponse.ok) {
+            mappingData = yield mappingResponse.json();
+          }
+          let tmdbId = null;
+          let season = null;
+          if (mappingData && mappingData.data) {
+            const tvdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "thetvdb");
+            if (tvdbMapping) {
+              const tvdbId = tvdbMapping.attributes.externalId;
+              const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY2}&external_source=tvdb_id`;
+              const findResponse = yield fetch(findUrl);
+              const findData = yield findResponse.json();
+              if (((_a = findData.tv_results) == null ? void 0 : _a.length) > 0) tmdbId = findData.tv_results[0].id;
+              else if (((_b = findData.movie_results) == null ? void 0 : _b.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+            }
+            if (!tmdbId) {
+              const imdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "imdb");
+              if (imdbMapping) {
+                const imdbId = imdbMapping.attributes.externalId;
+                const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+                const findResponse = yield fetch(findUrl);
+                const findData = yield findResponse.json();
+                if (((_c = findData.tv_results) == null ? void 0 : _c.length) > 0) tmdbId = findData.tv_results[0].id;
+                else if (((_d = findData.movie_results) == null ? void 0 : _d.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+              }
+            }
+          }
+          const detailsResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}`);
+          if (!detailsResponse.ok) return null;
+          const detailsData = yield detailsResponse.json();
+          if (detailsData && detailsData.data && detailsData.data.attributes) {
+            const attributes = detailsData.data.attributes;
+            const title = attributes.titles.en || attributes.titles.en_jp || attributes.canonicalTitle;
+            const year = attributes.startDate ? attributes.startDate.substring(0, 4) : null;
+            const subtype = attributes.subtype;
+            if (!tmdbId) {
+              const type = subtype === "movie" ? "movie" : "tv";
+              if (title) {
+                const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY2}`;
+                const searchResponse = yield fetch(searchUrl);
+                const searchData = yield searchResponse.json();
+                if (searchData.results && searchData.results.length > 0) {
+                  if (year) {
+                    const match = searchData.results.find((r) => {
+                      const date = type === "movie" ? r.release_date : r.first_air_date;
+                      return date && date.startsWith(year);
+                    });
+                    if (match) tmdbId = match.id;
+                    else tmdbId = searchData.results[0].id;
+                  } else {
+                    tmdbId = searchData.results[0].id;
+                  }
+                } else if (subtype !== "movie") {
+                  const cleanTitle = title.replace(/\s(\d+)$/, "").replace(/\sSeason\s\d+$/i, "");
+                  if (cleanTitle !== title) {
+                    const cleanSearchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(cleanTitle)}&api_key=${TMDB_API_KEY2}`;
+                    const cleanSearchResponse = yield fetch(cleanSearchUrl);
+                    const cleanSearchData = yield cleanSearchResponse.json();
+                    if (cleanSearchData.results && cleanSearchData.results.length > 0) {
+                      tmdbId = cleanSearchData.results[0].id;
+                    }
+                  }
+                }
+              }
+            }
+            if (tmdbId && subtype !== "movie") {
+              const seasonMatch = title.match(/Season\s*(\d+)/i) || title.match(/(\d+)(?:st|nd|rd|th)\s*Season/i);
+              if (seasonMatch) {
+                season = parseInt(seasonMatch[1]);
+              } else if (title.match(/\s(\d+)$/)) {
+                season = parseInt(title.match(/\s(\d+)$/)[1]);
+              } else if (title.match(/\sII$/)) season = 2;
+              else if (title.match(/\sIII$/)) season = 3;
+              else if (title.match(/\sIV$/)) season = 4;
+              else if (title.match(/\sV$/)) season = 5;
+            }
+          }
+          return { tmdbId, season };
+        } catch (e) {
+          console.error("[Kitsu] Error converting ID:", e);
+          return null;
+        }
+      });
+    }
+    function getSeasonEpisodeFromAbsolute2(tmdbId, absoluteEpisode) {
+      return __async(this, null, function* () {
+        try {
+          const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY2}&append_to_response=seasons`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          let totalEpisodes = 0;
+          const seasons = data.seasons.filter((s) => s.season_number > 0).sort((a, b) => a.season_number - b.season_number);
+          for (const season of seasons) {
+            if (absoluteEpisode <= totalEpisodes + season.episode_count) {
+              return {
+                season: season.season_number,
+                episode: absoluteEpisode - totalEpisodes
+              };
+            }
+            totalEpisodes += season.episode_count;
+          }
+          return null;
+        } catch (e) {
+          console.error("[TMDB] Error mapping absolute episode:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute: getSeasonEpisodeFromAbsolute2 };
   }
 });
 
@@ -518,7 +642,8 @@ var __async2 = (__this, __arguments, generator) => {
 var BASE_URL = "https://eurostreaming.luxe";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza } = require_extractors();
+var { extractMixDrop, extractDropLoad, extractSuperVideo, extractStreamTape, extractVidoza, extractUqload, extractUpstream } = require_extractors();
+var { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require_tmdb_helper();
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return "Unknown";
   const quality = qualityStr.toUpperCase();
@@ -542,6 +667,28 @@ function getQualityFromName(qualityStr) {
     return "240p";
   }
   return "Unknown";
+}
+function getImdbId(tmdbId, type) {
+  return __async2(this, null, function* () {
+    try {
+      const endpoint = type === "movie" ? "movie" : "tv";
+      const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+      const response = yield fetch(url);
+      if (!response.ok) return null;
+      const data = yield response.json();
+      if (data.imdb_id) return data.imdb_id;
+      const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+      const extResponse = yield fetch(externalUrl);
+      if (extResponse.ok) {
+        const extData = yield extResponse.json();
+        if (extData.imdb_id) return extData.imdb_id;
+      }
+      return null;
+    } catch (e) {
+      console.error("[EuroStreaming] Conversion error:", e);
+      return null;
+    }
+  });
 }
 function getShowInfo(tmdbId, type) {
   return __async2(this, null, function* () {
@@ -580,24 +727,6 @@ function extractDeltaBit(url) {
       return null;
     } catch (e) {
       console.error("[EuroStreaming] DeltaBit extraction error:", e);
-      return null;
-    }
-  });
-}
-function extractUqload(url) {
-  return __async2(this, null, function* () {
-    try {
-      if (url.startsWith("//")) url = "https:" + url;
-      const response = yield fetch(url);
-      if (!response.ok) return null;
-      const html = yield response.text();
-      const match = html.match(/sources:\s*\["(.*?)"\]/);
-      if (match) {
-        return match[1];
-      }
-      return null;
-    } catch (e) {
-      console.error("[EuroStreaming] Uqload extraction error:", e);
       return null;
     }
   });
@@ -685,19 +814,110 @@ function getTmdbIdFromImdb(imdbId, type) {
     }
   });
 }
+function verifyCandidateWithTmdb(title, targetTmdbId, type) {
+  return __async(this, null, function* () {
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}&language=it-IT`;
+      const response = yield fetch(searchUrl);
+      if (!response.ok) return true;
+      const data = yield response.json();
+      if (data.results && data.results.length > 0) {
+        const topResult = data.results[0];
+        if (String(topResult.id) === String(targetTmdbId)) {
+          return true;
+        }
+        console.log(`[EuroStreaming] Title verification mismatch: Candidate "${title}" maps to ID ${topResult.id} (${topResult.name || topResult.title}), but expected ${targetTmdbId}`);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.error("[EuroStreaming] Verification error:", e);
+      return true;
+    }
+  });
+}
+function verifyMoviePlayer(url, targetYear) {
+  return __async(this, null, function* () {
+    try {
+      console.log(`[EuroStreaming] Verifying via MoviePlayer: ${url}`);
+      const response = yield fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT
+        }
+      });
+      if (!response.ok) return false;
+      const html = yield response.text();
+      const yearMatch1 = html.match(/trasmessa dal (\d{4})/i);
+      if (yearMatch1) {
+        const foundYear = parseInt(yearMatch1[1]);
+        if (Math.abs(foundYear - targetYear) <= 1) {
+          console.log(`[EuroStreaming] MoviePlayer verified year ${foundYear} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const yearMatch2 = html.match(/Prima messa in onda originale.*?(\d{4})/i);
+      if (yearMatch2) {
+        const foundYear = parseInt(yearMatch2[1]);
+        if (Math.abs(foundYear - targetYear) <= 1) {
+          console.log(`[EuroStreaming] MoviePlayer verified year ${foundYear} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const titleMatch = html.match(new RegExp("<title>.*\\(.*(\\d{4}).*\\).*<\\/title>", "is"));
+      if (titleMatch) {
+        const foundYear = parseInt(titleMatch[1]);
+        if (Math.abs(foundYear - targetYear) <= 2) {
+          console.log(`[EuroStreaming] MoviePlayer verified title year ${foundYear} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      console.log(`[EuroStreaming] MoviePlayer verification failed. Target Year: ${targetYear}`);
+      return false;
+    } catch (e) {
+      console.error("[EuroStreaming] MoviePlayer error:", e);
+      return false;
+    }
+  });
+}
 function getStreams(id, type, season, episode, showInfo) {
   return __async2(this, null, function* () {
     if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
+      let imdbId = null;
       if (id.toString().startsWith("tt")) {
+        imdbId = id.toString();
         tmdbId = yield getTmdbIdFromImdb(id, type);
         if (!tmdbId) {
           console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
           return [];
         }
+      } else if (id.toString().startsWith("kitsu:")) {
+        const resolved = yield getTmdbFromKitsu(id);
+        if (resolved && resolved.tmdbId) {
+          tmdbId = resolved.tmdbId;
+          if (resolved.season) {
+            console.log(`[EuroStreaming] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
+            season = resolved.season;
+          }
+          console.log(`[EuroStreaming] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}, Season ${season}`);
+        } else {
+          console.log(`[EuroStreaming] Could not convert ${id} to TMDB ID`);
+          return [];
+        }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
+      }
+      if (!imdbId && tmdbId) {
+        try {
+          const resolvedImdb = yield getImdbId(tmdbId, type);
+          if (resolvedImdb) {
+            imdbId = resolvedImdb;
+            console.log(`[EuroStreaming] Resolved TMDB ID ${tmdbId} to IMDb ID ${imdbId} for verification`);
+          }
+        } catch (e) {
+          console.log(`[EuroStreaming] Failed to resolve IMDb ID for verification: ${e.message}`);
+        }
       }
       let fetchedShowInfo = showInfo;
       if (!fetchedShowInfo) {
@@ -739,6 +959,20 @@ function getStreams(id, type, season, episode, showInfo) {
       console.log(`[EuroStreaming] Testing ${topCandidates.length} candidates for ${tmdbId}`);
       const streams = [];
       const promises = [];
+      let mappedSeason = null;
+      let mappedEpisode = null;
+      if (season === 1 && episode > 20 && tmdbId) {
+        try {
+          const mapped = yield getSeasonEpisodeFromAbsolute(tmdbId, episode);
+          if (mapped) {
+            console.log(`[EuroStreaming] Mapped absolute episode ${episode} to Season ${mapped.season}, Episode ${mapped.episode}`);
+            mappedSeason = mapped.season;
+            mappedEpisode = mapped.episode;
+          }
+        } catch (e) {
+          console.error("[EuroStreaming] Error mapping episode:", e);
+        }
+      }
       for (const candidate of topCandidates) {
         promises.push(() => __async2(null, null, function* () {
           try {
@@ -754,200 +988,299 @@ function getStreams(id, type, season, episode, showInfo) {
               return;
             }
             const html = yield response.text();
-            if (id.toString().startsWith("tt")) {
-              const targetImdbId = id.toString();
-              const imdbMatches = html.match(/tt\d{7,8}/g);
-              if (imdbMatches && imdbMatches.length > 0) {
-                const hasTargetId = imdbMatches.includes(targetImdbId);
-                const otherIds = imdbMatches.filter((m) => m !== targetImdbId);
-                if (!hasTargetId && otherIds.length > 0) {
-                  console.log(`[EuroStreaming] Rejected candidate ${candidate.url} due to IMDB ID mismatch. Found: ${otherIds.join(", ")}`);
-                  return;
-                }
-                if (hasTargetId) {
-                  console.log(`[EuroStreaming] Verified candidate ${candidate.url} with IMDB ID match.`);
+            let isVerified = false;
+            const tmdbLinkMatches = html.match(/themoviedb\.org\/(?:tv|movie)\/(\d+)/g);
+            if (tmdbLinkMatches) {
+              const foundIds = tmdbLinkMatches.map((l) => {
+                const m = l.match(/\/(\d+)/);
+                return m ? m[1] : null;
+              }).filter(Boolean);
+              if (foundIds.includes(String(tmdbId))) {
+                console.log(`[EuroStreaming] Verified candidate ${candidate.title} via TMDB link.`);
+                isVerified = true;
+              }
+            }
+            if (!isVerified) {
+              const mpLinkMatch = html.match(/href=["'](https?:\/\/(?:www\.)?movieplayer\.it\/serietv\/[^"']+)["']/i);
+              if (mpLinkMatch) {
+                const mpUrl = mpLinkMatch[1];
+                const targetYear = fetchedShowInfo && (fetchedShowInfo.first_air_date || fetchedShowInfo.release_date) ? parseInt((fetchedShowInfo.first_air_date || fetchedShowInfo.release_date).substring(0, 4)) : null;
+                if (targetYear) {
+                  const mpVerified = yield verifyMoviePlayer(mpUrl, targetYear);
+                  if (mpVerified) {
+                    isVerified = true;
+                    console.log(`[EuroStreaming] Verified candidate ${candidate.title} via MoviePlayer link.`);
+                  }
                 }
               }
             }
-            const episodeStr1 = `${season}x${episode}`;
-            const episodeStr2 = `${season}x${episode.toString().padStart(2, "0")}`;
-            const episodeRegex = new RegExp(`data-num="(${episodeStr1}|${episodeStr2})"`, "i");
-            const episodeMatch = episodeRegex.exec(html);
-            if (!episodeMatch) {
-              console.log(`[EuroStreaming] Episode ${season}x${episode} not found in candidate`);
+            if (!isVerified && imdbId) {
+              const targetImdbId = imdbId;
+              const imdbMatches = html.match(/tt\d{7,8}/g);
+              if (imdbMatches && imdbMatches.length > 0) {
+                const hasTargetId = imdbMatches.some((match) => match === targetImdbId);
+                if (hasTargetId) {
+                  console.log(`[EuroStreaming] Verified candidate ${candidate.title} with IMDB ID match.`);
+                  isVerified = true;
+                } else {
+                  console.log(`[EuroStreaming] IMDB ID mismatch for ${candidate.title}. Found: ${imdbMatches.join(", ")}`);
+                }
+              }
+            }
+            if (!isVerified) {
+              if (cleanTitle.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
+                console.log(`[EuroStreaming] Accepting "All'arrembaggio" as valid alias for One Piece.`);
+                isVerified = true;
+              } else {
+                console.log(`[EuroStreaming] No direct ID match found for ${candidate.title}. Verifying via TMDB search...`);
+                const isTitleMatch = yield verifyCandidateWithTmdb(candidate.title, tmdbId, type);
+                if (isTitleMatch) {
+                  console.log(`[EuroStreaming] Verified candidate ${candidate.title} via reverse TMDB search.`);
+                  isVerified = true;
+                }
+              }
+            }
+            if (!isVerified) {
+              console.log(`[EuroStreaming] Skipping candidate ${candidate.title} - Verification failed.`);
               return;
             }
-            console.log(`[EuroStreaming] Found episode match at index ${episodeMatch.index}`);
-            const startIndex = episodeMatch.index;
-            const endLiIndex = html.indexOf("</li>", startIndex);
-            if (endLiIndex === -1) return;
-            const episodeBlock = html.substring(startIndex, endLiIndex);
-            const linkRegex = /data-link=["']([^"']+)["']/g;
-            let linkMatch;
-            const innerPromises = [];
-            while ((linkMatch = linkRegex.exec(episodeBlock)) !== null) {
-              let name = "Source";
-              const url = linkMatch[1];
-              if (url.includes("dropload")) name = "DropLoad";
-              else if (url.includes("mixdrop")) name = "MixDrop";
-              else if (url.includes("supervideo")) name = "SuperVideo";
-              else if (url.includes("deltabit")) name = "DeltaBit";
-              else if (url.includes("vidoza")) name = "Vidoza";
-              else if (url.includes("streamtape")) name = "StreamTape";
-              else if (url.includes("uqload")) name = "Uqload";
-              innerPromises.push(() => __async2(null, null, function* () {
-                try {
-                  let streamUrl = url;
-                  if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-                  if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
-                    const extracted = yield extractMixDrop(streamUrl);
-                    if (extracted && extracted.url) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.url.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted.url,
-                        headers: extracted.headers,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("dropload")) {
-                    const extracted = yield extractDropLoad(streamUrl);
-                    if (extracted && extracted.url) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.url.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted.url,
-                        headers: extracted.headers,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("supervideo")) {
-                    const extracted = yield extractSuperVideo(streamUrl);
-                    if (extracted) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("deltabit")) {
-                    const extracted = yield extractDeltaBit(streamUrl);
-                    if (extracted) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("vidoza")) {
-                    const extracted = yield extractVidoza(streamUrl);
-                    if (extracted) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("streamtape")) {
-                    const extracted = yield extractStreamTape(streamUrl);
-                    if (extracted) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  } else if (streamUrl.includes("uqload")) {
-                    const extracted = yield extractUqload(streamUrl);
-                    if (extracted) {
-                      let quality = "HD";
-                      const lowerUrl = extracted.toLowerCase();
-                      if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                      else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                      else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                      else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                      else if (lowerUrl.includes("360")) quality = "360p";
-                      const normalizedQuality = getQualityFromName(quality);
-                      const displayName = `${cleanTitle} ${season}x${episode}`;
-                      streams.push({
-                        name: `EuroStreaming - ${name}`,
-                        title: displayName,
-                        url: extracted,
-                        quality: normalizedQuality,
-                        type: "direct"
-                      });
-                    }
-                  }
-                } catch (err) {
-                  console.error(`[EuroStreaming] Error extracting ${url}:`, err);
-                }
-              }));
+            const epPattern1 = new RegExp(`${season}x${episode}\\b`, "i");
+            const epPattern2 = new RegExp(`${season}\\s*x\\s*${episode}\\b`, "i");
+            let epPatternMapped1 = null;
+            let epPatternMapped2 = null;
+            if (mappedSeason) {
+              epPatternMapped1 = new RegExp(`${mappedSeason}x${mappedEpisode}\\b`, "i");
+              epPatternMapped2 = new RegExp(`${mappedSeason}\\s*x\\s*${mappedEpisode}\\b`, "i");
             }
-            yield Promise.all(innerPromises.map((p) => p()));
+            let epPattern3 = null;
+            if (season === 1) {
+              epPattern3 = new RegExp(`Episode\\s*${episode}\\b`, "i");
+            }
+            let episodeMatch = epPattern1.exec(html) || epPattern2.exec(html);
+            if (!episodeMatch && epPatternMapped1) {
+              episodeMatch = epPatternMapped1.exec(html) || epPatternMapped2.exec(html);
+              if (episodeMatch) console.log(`[EuroStreaming] Found mapped episode ${mappedSeason}x${mappedEpisode}`);
+            }
+            if (!episodeMatch && epPattern3) {
+              episodeMatch = epPattern3.exec(html);
+            }
+            if (!episodeMatch) {
+              console.log(`[EuroStreaming] Episode ${season}x${episode} not found with regex. Scanning content...`);
+            }
+            let epString1 = `${season}x${episode}`;
+            let epString2 = `${season}x${episode.toString().padStart(2, "0")}`;
+            if (mappedSeason) {
+              const mappedStr1 = `${mappedSeason}x${mappedEpisode}`;
+              const mappedStr2 = `${mappedSeason}x${mappedEpisode.toString().padStart(2, "0")}`;
+              if (html.indexOf(mappedStr1) !== -1) {
+                epString1 = mappedStr1;
+                epString2 = mappedStr2;
+              } else if (html.indexOf(mappedStr2) !== -1) {
+                epString1 = mappedStr2;
+                epString2 = mappedStr1;
+              }
+            }
+            let searchIndex = html.indexOf(epString1);
+            if (searchIndex === -1) searchIndex = html.indexOf(epString2);
+            if (searchIndex === -1 && season === 1) {
+              const epString3 = `Episodio ${episode}`;
+              const epString4 = `Ep. ${episode}`;
+              searchIndex = html.indexOf(epString3);
+              if (searchIndex === -1) searchIndex = html.indexOf(epString4);
+            }
+            if (searchIndex === -1) {
+              console.log(`[EuroStreaming] Episode ${season}x${episode} not found in content.`);
+              return;
+            }
+            console.log(`[EuroStreaming] Found episode marker at index ${searchIndex}`);
+            const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+            let linkMatch;
+            const potentialLinks = [];
+            while ((linkMatch = linkRegex.exec(html)) !== null) {
+              const href = linkMatch[1];
+              const text = linkMatch[2].replace(/<[^>]+>/g, "").trim();
+              if (text.includes(epString1) || text.includes(epString2)) {
+                potentialLinks.push(href);
+              } else if (season === 1 && (text.includes(`Episodio ${episode}`) || text.includes(`Ep. ${episode}`))) {
+                potentialLinks.push(href);
+              } else {
+              }
+            }
+            if (potentialLinks.length > 0) {
+              console.log(`[EuroStreaming] Found ${potentialLinks.length} direct links for episode.`);
+              for (const link of potentialLinks) {
+              }
+            }
+            const scanWindow = html.substring(searchIndex, searchIndex + 2e3);
+            console.log(`[EuroStreaming] Scan window content (first 200 chars): ${scanWindow.substring(0, 200)}...`);
+            const providerPatterns = [
+              /delta-bit\.net\/embed\/[^"']+/i,
+              /deltabit\.co\/embed\/[^"']+/i,
+              /uqload\.(?:com|io|co)\/embed-[^"']+/i,
+              /mixdrop\.(?:co|to|ch)\/e\/[^"']+/i,
+              /swzz\.(?:co|to|ch)\/e\/[^"']+/i,
+              /dropload\.(?:io|pro|co)\/e\/[^"']+/i,
+              /dropload\.(?:io|pro|co)\/[^"']+/i,
+              /supervideo\.(?:tv|cc)\/e\/[^"']+/i,
+              /supervideo\.(?:tv|cc)\/[^"']+/i,
+              /upstream\.(?:to|co)\/embed-[^"']+/i,
+              /upstream\.(?:to|co)\/[^"']+/i,
+              /vidoza\.net\/embed-[^"']+/i
+            ];
+            const goToPlayerMatches = scanWindow.matchAll(/go_to_player\(['"]([^'"]+)['"]\)/g);
+            for (const m of goToPlayerMatches) {
+              potentialLinks.push(m[1]);
+            }
+            const linkMatches = scanWindow.matchAll(/(?:href|data-link)=["'](https?:\/\/[^"']+)["']/g);
+            for (const m of linkMatches) {
+              const url = m[1];
+              if (providerPatterns.some((p) => p.test(url)) || url.includes("dropload") || url.includes("supervideo") || url.includes("upstream") || url.includes("mixdrop") || url.includes("delta") || url.includes("uqload")) {
+                potentialLinks.push(url);
+              }
+            }
+            console.log(`[EuroStreaming] Found ${potentialLinks.length} potential stream links.`);
+            const uniqueLinks = [...new Set(potentialLinks)];
+            for (const link of uniqueLinks) {
+              try {
+                let streamUrl = link;
+                if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
+                const displaySeason = mappedSeason || season;
+                const displayEpisode = mappedEpisode || episode;
+                const displayName = `${cleanTitle} ${displaySeason}x${displayEpisode}`;
+                if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
+                  const extracted = yield extractMixDrop(streamUrl);
+                  if (extracted && extracted.url) {
+                    let quality = "HD";
+                    const lowerUrl = extracted.url.toLowerCase();
+                    if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                    else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                    else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                    else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                    else if (lowerUrl.includes("360")) quality = "360p";
+                    const normalizedQuality = getQualityFromName(quality);
+                    streams.push({
+                      name: `EuroStreaming - MixDrop`,
+                      title: displayName,
+                      url: extracted.url,
+                      headers: extracted.headers,
+                      quality: normalizedQuality,
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("dropload")) {
+                  const extracted = yield extractDropLoad(streamUrl);
+                  if (extracted && extracted.url) {
+                    let quality = "HD";
+                    const lowerUrl = extracted.url.toLowerCase();
+                    if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                    else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                    else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                    else if (lowerUrl.includes("360")) quality = "360p";
+                    const normalizedQuality = getQualityFromName(quality);
+                    streams.push({
+                      name: `EuroStreaming - DropLoad`,
+                      title: displayName,
+                      url: extracted.url,
+                      headers: extracted.headers,
+                      quality: normalizedQuality,
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("supervideo")) {
+                  const extracted = yield extractSuperVideo(streamUrl);
+                  if (extracted) {
+                    let quality = "HD";
+                    const lowerUrl = extracted.toLowerCase();
+                    if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                    else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                    else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                    else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                    else if (lowerUrl.includes("360")) quality = "360p";
+                    const normalizedQuality = getQualityFromName(quality);
+                    streams.push({
+                      name: `EuroStreaming - SuperVideo`,
+                      title: displayName,
+                      url: extracted,
+                      quality: normalizedQuality,
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("delta-bit") || streamUrl.includes("deltabit")) {
+                  const extracted = yield extractDeltaBit(streamUrl);
+                  if (extracted) {
+                    let quality = "HD";
+                    const lowerUrl = extracted.toLowerCase();
+                    if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                    else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                    else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                    else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                    else if (lowerUrl.includes("360")) quality = "360p";
+                    const normalizedQuality = getQualityFromName(quality);
+                    streams.push({
+                      name: `EuroStreaming - DeltaBit`,
+                      title: displayName,
+                      url: extracted,
+                      quality: normalizedQuality,
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("vidoza")) {
+                  const extracted = yield extractVidoza(streamUrl);
+                  if (extracted) {
+                    let quality = "HD";
+                    const lowerUrl = extracted.toLowerCase();
+                    if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                    else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                    else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                    else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                    else if (lowerUrl.includes("360")) quality = "360p";
+                    const normalizedQuality = getQualityFromName(quality);
+                    streams.push({
+                      name: `EuroStreaming - Vidoza`,
+                      title: displayName,
+                      url: extracted,
+                      quality: normalizedQuality,
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("uqload")) {
+                  const extracted = yield extractUqload(streamUrl);
+                  if (extracted) {
+                    streams.push({
+                      url: extracted,
+                      name: "EuroStreaming - Uqload",
+                      title: displayName,
+                      quality: "SD",
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("upstream")) {
+                  const extracted = yield extractUpstream(streamUrl);
+                  if (extracted && extracted.url) {
+                    streams.push({
+                      url: extracted.url,
+                      name: "EuroStreaming - Upstream",
+                      title: displayName,
+                      quality: "HD",
+                      type: "direct"
+                    });
+                  }
+                } else if (streamUrl.includes("streamtape")) {
+                  const extracted = yield extractStreamTape(streamUrl);
+                  if (extracted && extracted.url) {
+                    streams.push({
+                      url: extracted.url,
+                      name: "EuroStreaming - StreamTape",
+                      title: displayName,
+                      quality: "HD",
+                      type: "direct"
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error(`[EuroStreaming] Link processing error:`, e);
+              }
+            }
           } catch (e) {
             console.error(`[EuroStreaming] Error checking candidate ${candidate.url}:`, e);
           }

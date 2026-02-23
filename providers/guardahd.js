@@ -475,6 +475,130 @@ var require_extractors = __commonJS({
   }
 });
 
+// src/tmdb_helper.js
+var require_tmdb_helper = __commonJS({
+  "src/tmdb_helper.js"(exports2, module2) {
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    function getTmdbFromKitsu2(kitsuId) {
+      return __async(this, null, function* () {
+        var _a, _b, _c, _d;
+        try {
+          const id = String(kitsuId).replace("kitsu:", "");
+          const mappingResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+          let mappingData = null;
+          if (mappingResponse.ok) {
+            mappingData = yield mappingResponse.json();
+          }
+          let tmdbId = null;
+          let season = null;
+          if (mappingData && mappingData.data) {
+            const tvdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "thetvdb");
+            if (tvdbMapping) {
+              const tvdbId = tvdbMapping.attributes.externalId;
+              const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY2}&external_source=tvdb_id`;
+              const findResponse = yield fetch(findUrl);
+              const findData = yield findResponse.json();
+              if (((_a = findData.tv_results) == null ? void 0 : _a.length) > 0) tmdbId = findData.tv_results[0].id;
+              else if (((_b = findData.movie_results) == null ? void 0 : _b.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+            }
+            if (!tmdbId) {
+              const imdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "imdb");
+              if (imdbMapping) {
+                const imdbId = imdbMapping.attributes.externalId;
+                const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+                const findResponse = yield fetch(findUrl);
+                const findData = yield findResponse.json();
+                if (((_c = findData.tv_results) == null ? void 0 : _c.length) > 0) tmdbId = findData.tv_results[0].id;
+                else if (((_d = findData.movie_results) == null ? void 0 : _d.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+              }
+            }
+          }
+          const detailsResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}`);
+          if (!detailsResponse.ok) return null;
+          const detailsData = yield detailsResponse.json();
+          if (detailsData && detailsData.data && detailsData.data.attributes) {
+            const attributes = detailsData.data.attributes;
+            const title = attributes.titles.en || attributes.titles.en_jp || attributes.canonicalTitle;
+            const year = attributes.startDate ? attributes.startDate.substring(0, 4) : null;
+            const subtype = attributes.subtype;
+            if (!tmdbId) {
+              const type = subtype === "movie" ? "movie" : "tv";
+              if (title) {
+                const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY2}`;
+                const searchResponse = yield fetch(searchUrl);
+                const searchData = yield searchResponse.json();
+                if (searchData.results && searchData.results.length > 0) {
+                  if (year) {
+                    const match = searchData.results.find((r) => {
+                      const date = type === "movie" ? r.release_date : r.first_air_date;
+                      return date && date.startsWith(year);
+                    });
+                    if (match) tmdbId = match.id;
+                    else tmdbId = searchData.results[0].id;
+                  } else {
+                    tmdbId = searchData.results[0].id;
+                  }
+                } else if (subtype !== "movie") {
+                  const cleanTitle = title.replace(/\s(\d+)$/, "").replace(/\sSeason\s\d+$/i, "");
+                  if (cleanTitle !== title) {
+                    const cleanSearchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(cleanTitle)}&api_key=${TMDB_API_KEY2}`;
+                    const cleanSearchResponse = yield fetch(cleanSearchUrl);
+                    const cleanSearchData = yield cleanSearchResponse.json();
+                    if (cleanSearchData.results && cleanSearchData.results.length > 0) {
+                      tmdbId = cleanSearchData.results[0].id;
+                    }
+                  }
+                }
+              }
+            }
+            if (tmdbId && subtype !== "movie") {
+              const seasonMatch = title.match(/Season\s*(\d+)/i) || title.match(/(\d+)(?:st|nd|rd|th)\s*Season/i);
+              if (seasonMatch) {
+                season = parseInt(seasonMatch[1]);
+              } else if (title.match(/\s(\d+)$/)) {
+                season = parseInt(title.match(/\s(\d+)$/)[1]);
+              } else if (title.match(/\sII$/)) season = 2;
+              else if (title.match(/\sIII$/)) season = 3;
+              else if (title.match(/\sIV$/)) season = 4;
+              else if (title.match(/\sV$/)) season = 5;
+            }
+          }
+          return { tmdbId, season };
+        } catch (e) {
+          console.error("[Kitsu] Error converting ID:", e);
+          return null;
+        }
+      });
+    }
+    function getSeasonEpisodeFromAbsolute(tmdbId, absoluteEpisode) {
+      return __async(this, null, function* () {
+        try {
+          const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY2}&append_to_response=seasons`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          let totalEpisodes = 0;
+          const seasons = data.seasons.filter((s) => s.season_number > 0).sort((a, b) => a.season_number - b.season_number);
+          for (const season of seasons) {
+            if (absoluteEpisode <= totalEpisodes + season.episode_count) {
+              return {
+                season: season.season_number,
+                episode: absoluteEpisode - totalEpisodes
+              };
+            }
+            totalEpisodes += season.episode_count;
+          }
+          return null;
+        } catch (e) {
+          console.error("[TMDB] Error mapping absolute episode:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute };
+  }
+});
+
 // src/guardahd/index.js
 var __async2 = (__this, __arguments, generator) => {
   return new Promise((resolve, reject) => {
@@ -500,6 +624,7 @@ var BASE_URL = "https://guardahd.stream";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 var { extractMixDrop, extractDropLoad, extractSuperVideo } = require_extractors();
+var { getTmdbFromKitsu } = require_tmdb_helper();
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return "Unknown";
   const quality = qualityStr.toUpperCase();
@@ -533,13 +658,20 @@ function getImdbId(tmdbId, type) {
       const response = yield fetch(url);
       if (!response.ok) return null;
       const data = yield response.json();
-      if (data.imdb_id) return data.imdb_id;
+      if (data.imdb_id) {
+        console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
+        return data.imdb_id;
+      }
       const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
       const extResponse = yield fetch(externalUrl);
       if (extResponse.ok) {
         const extData = yield extResponse.json();
-        if (extData.imdb_id) return extData.imdb_id;
+        if (extData.imdb_id) {
+          console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
+          return extData.imdb_id;
+        }
       }
+      console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
       return null;
     } catch (e) {
       console.error("[GuardaHD] Conversion error:", e);
@@ -551,17 +683,28 @@ function getMetadata(id, type) {
   return __async2(this, null, function* () {
     try {
       const normalizedType = String(type).toLowerCase();
+      let queryId = id;
+      if (String(id).startsWith("kitsu:")) {
+        const resolved = yield getTmdbFromKitsu(id);
+        if (resolved && resolved.tmdbId) {
+          queryId = resolved.tmdbId;
+          console.log(`[GuardaHD] Resolved Kitsu ID ${id} to ID ${queryId}`);
+        } else {
+          console.log(`[GuardaHD] Could not convert ${id} to usable ID`);
+          return null;
+        }
+      }
       let url;
-      if (String(id).startsWith("tt")) {
-        url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
+      if (String(queryId).startsWith("tt")) {
+        url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
       } else {
         const endpoint = normalizedType === "movie" ? "movie" : "tv";
-        url = `https://api.themoviedb.org/3/${endpoint}/${id}?api_key=${TMDB_API_KEY}&language=it-IT`;
+        url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY}&language=it-IT`;
       }
       const response = yield fetch(url);
       if (!response.ok) return null;
       const data = yield response.json();
-      if (String(id).startsWith("tt")) {
+      if (String(queryId).startsWith("tt")) {
         const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
         if (results && results.length > 0) return results[0];
       } else {
@@ -577,6 +720,20 @@ function getMetadata(id, type) {
 function getStreams(id, type, season, episode) {
   return __async2(this, null, function* () {
     let cleanId = id.toString();
+    if (cleanId.startsWith("kitsu:")) {
+      const resolved = yield getTmdbFromKitsu(cleanId);
+      if (resolved && resolved.tmdbId) {
+        console.log(`[GuardaHD] Resolved Kitsu ID ${cleanId} to ID ${resolved.tmdbId}`);
+        cleanId = String(resolved.tmdbId);
+        if (resolved.season) {
+          console.log(`[GuardaHD] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
+          season = resolved.season;
+        }
+      } else {
+        console.log(`[GuardaHD] Could not convert ${cleanId} to usable ID`);
+        return [];
+      }
+    }
     if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
     let imdbId = cleanId;
     if (!cleanId.startsWith("tt")) {
@@ -652,8 +809,7 @@ function getStreams(id, type, season, episode) {
           if (extracted && extracted.url) {
             let quality = "HD";
             const lowerUrl = extracted.url.toLowerCase();
-            if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-            else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+            if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
             else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
             else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
             else if (lowerUrl.includes("360")) quality = "360p";

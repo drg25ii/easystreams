@@ -475,6 +475,130 @@ var require_extractors = __commonJS({
   }
 });
 
+// src/tmdb_helper.js
+var require_tmdb_helper = __commonJS({
+  "src/tmdb_helper.js"(exports2, module2) {
+    var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    function getTmdbFromKitsu2(kitsuId) {
+      return __async(this, null, function* () {
+        var _a, _b, _c, _d;
+        try {
+          const id = String(kitsuId).replace("kitsu:", "");
+          const mappingResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
+          let mappingData = null;
+          if (mappingResponse.ok) {
+            mappingData = yield mappingResponse.json();
+          }
+          let tmdbId = null;
+          let season = null;
+          if (mappingData && mappingData.data) {
+            const tvdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "thetvdb");
+            if (tvdbMapping) {
+              const tvdbId = tvdbMapping.attributes.externalId;
+              const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY2}&external_source=tvdb_id`;
+              const findResponse = yield fetch(findUrl);
+              const findData = yield findResponse.json();
+              if (((_a = findData.tv_results) == null ? void 0 : _a.length) > 0) tmdbId = findData.tv_results[0].id;
+              else if (((_b = findData.movie_results) == null ? void 0 : _b.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+            }
+            if (!tmdbId) {
+              const imdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "imdb");
+              if (imdbMapping) {
+                const imdbId = imdbMapping.attributes.externalId;
+                const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY2}&external_source=imdb_id`;
+                const findResponse = yield fetch(findUrl);
+                const findData = yield findResponse.json();
+                if (((_c = findData.tv_results) == null ? void 0 : _c.length) > 0) tmdbId = findData.tv_results[0].id;
+                else if (((_d = findData.movie_results) == null ? void 0 : _d.length) > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+              }
+            }
+          }
+          const detailsResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}`);
+          if (!detailsResponse.ok) return null;
+          const detailsData = yield detailsResponse.json();
+          if (detailsData && detailsData.data && detailsData.data.attributes) {
+            const attributes = detailsData.data.attributes;
+            const title = attributes.titles.en || attributes.titles.en_jp || attributes.canonicalTitle;
+            const year = attributes.startDate ? attributes.startDate.substring(0, 4) : null;
+            const subtype = attributes.subtype;
+            if (!tmdbId) {
+              const type = subtype === "movie" ? "movie" : "tv";
+              if (title) {
+                const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY2}`;
+                const searchResponse = yield fetch(searchUrl);
+                const searchData = yield searchResponse.json();
+                if (searchData.results && searchData.results.length > 0) {
+                  if (year) {
+                    const match = searchData.results.find((r) => {
+                      const date = type === "movie" ? r.release_date : r.first_air_date;
+                      return date && date.startsWith(year);
+                    });
+                    if (match) tmdbId = match.id;
+                    else tmdbId = searchData.results[0].id;
+                  } else {
+                    tmdbId = searchData.results[0].id;
+                  }
+                } else if (subtype !== "movie") {
+                  const cleanTitle = title.replace(/\s(\d+)$/, "").replace(/\sSeason\s\d+$/i, "");
+                  if (cleanTitle !== title) {
+                    const cleanSearchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(cleanTitle)}&api_key=${TMDB_API_KEY2}`;
+                    const cleanSearchResponse = yield fetch(cleanSearchUrl);
+                    const cleanSearchData = yield cleanSearchResponse.json();
+                    if (cleanSearchData.results && cleanSearchData.results.length > 0) {
+                      tmdbId = cleanSearchData.results[0].id;
+                    }
+                  }
+                }
+              }
+            }
+            if (tmdbId && subtype !== "movie") {
+              const seasonMatch = title.match(/Season\s*(\d+)/i) || title.match(/(\d+)(?:st|nd|rd|th)\s*Season/i);
+              if (seasonMatch) {
+                season = parseInt(seasonMatch[1]);
+              } else if (title.match(/\s(\d+)$/)) {
+                season = parseInt(title.match(/\s(\d+)$/)[1]);
+              } else if (title.match(/\sII$/)) season = 2;
+              else if (title.match(/\sIII$/)) season = 3;
+              else if (title.match(/\sIV$/)) season = 4;
+              else if (title.match(/\sV$/)) season = 5;
+            }
+          }
+          return { tmdbId, season };
+        } catch (e) {
+          console.error("[Kitsu] Error converting ID:", e);
+          return null;
+        }
+      });
+    }
+    function getSeasonEpisodeFromAbsolute2(tmdbId, absoluteEpisode) {
+      return __async(this, null, function* () {
+        try {
+          const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${TMDB_API_KEY2}&append_to_response=seasons`;
+          const response = yield fetch(url);
+          if (!response.ok) return null;
+          const data = yield response.json();
+          let totalEpisodes = 0;
+          const seasons = data.seasons.filter((s) => s.season_number > 0).sort((a, b) => a.season_number - b.season_number);
+          for (const season of seasons) {
+            if (absoluteEpisode <= totalEpisodes + season.episode_count) {
+              return {
+                season: season.season_number,
+                episode: absoluteEpisode - totalEpisodes
+              };
+            }
+            totalEpisodes += season.episode_count;
+          }
+          return null;
+        } catch (e) {
+          console.error("[TMDB] Error mapping absolute episode:", e);
+          return null;
+        }
+      });
+    }
+    module2.exports = { getTmdbFromKitsu: getTmdbFromKitsu2, getSeasonEpisodeFromAbsolute: getSeasonEpisodeFromAbsolute2 };
+  }
+});
+
 // src/guardaserie/index.js
 var __async2 = (__this, __arguments, generator) => {
   return new Promise((resolve, reject) => {
@@ -499,6 +623,7 @@ var __async2 = (__this, __arguments, generator) => {
 var BASE_URL = "https://guardaserietv.best";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require_extractors();
+var { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require_tmdb_helper();
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return "Unknown";
   const quality = qualityStr.toUpperCase();
@@ -522,6 +647,28 @@ function getQualityFromName(qualityStr) {
     return "240p";
   }
   return "Unknown";
+}
+function getImdbId(tmdbId, type) {
+  return __async2(this, null, function* () {
+    try {
+      const endpoint = type === "movie" ? "movie" : "tv";
+      const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+      const response = yield fetch(url);
+      if (!response.ok) return null;
+      const data = yield response.json();
+      if (data.imdb_id) return data.imdb_id;
+      const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
+      const extResponse = yield fetch(externalUrl);
+      if (extResponse.ok) {
+        const extData = yield extResponse.json();
+        if (extData.imdb_id) return extData.imdb_id;
+      }
+      return null;
+    } catch (e) {
+      console.error("[Guardaserie] Conversion error:", e);
+      return null;
+    }
+  });
 }
 function getShowInfo(tmdbId, type) {
   return __async2(this, null, function* () {
@@ -559,14 +706,40 @@ function getStreams(id, type, season, episode) {
     if (String(type).toLowerCase() === "movie") return [];
     try {
       let tmdbId = id;
+      let imdbId = null;
       if (id.toString().startsWith("tt")) {
+        imdbId = id.toString();
         tmdbId = yield getTmdbIdFromImdb(id, type);
         if (!tmdbId) {
           console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
           return [];
         }
+      } else if (id.toString().startsWith("kitsu:")) {
+        const resolved = yield getTmdbFromKitsu(id);
+        if (resolved && resolved.tmdbId) {
+          tmdbId = resolved.tmdbId;
+          if (resolved.season) {
+            console.log(`[Guardaserie] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
+            season = resolved.season;
+          }
+          console.log(`[Guardaserie] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId}, Season ${season}`);
+        } else {
+          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
+          return [];
+        }
       } else if (id.toString().startsWith("tmdb:")) {
         tmdbId = id.toString().replace("tmdb:", "");
+      }
+      if (!imdbId && tmdbId) {
+        try {
+          const resolvedImdb = yield getImdbId(tmdbId, type);
+          if (resolvedImdb) {
+            imdbId = resolvedImdb;
+            console.log(`[Guardaserie] Resolved TMDB ID ${tmdbId} to IMDb ID ${imdbId} for verification`);
+          }
+        } catch (e) {
+          console.log(`[Guardaserie] Failed to resolve IMDb ID for verification: ${e.message}`);
+        }
       }
       let showInfo = null;
       try {
@@ -576,6 +749,20 @@ function getStreams(id, type, season, episode) {
       }
       if (!showInfo) return [];
       const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
+      let mappedSeason = null;
+      let mappedEpisode = null;
+      if (season === 1 && episode > 20 && tmdbId) {
+        try {
+          const mapped = yield getSeasonEpisodeFromAbsolute(tmdbId, episode);
+          if (mapped) {
+            console.log(`[Guardaserie] Mapped absolute episode ${episode} to Season ${mapped.season}, Episode ${mapped.episode}`);
+            mappedSeason = mapped.season;
+            mappedEpisode = mapped.episode;
+          }
+        } catch (e) {
+          console.error("[Guardaserie] Error mapping episode:", e);
+        }
+      }
       const year = showInfo.first_air_date ? showInfo.first_air_date.split("-")[0] : "";
       console.log(`[Guardaserie] Searching for: ${title} (${year})`);
       const params = new URLSearchParams();
@@ -630,15 +817,19 @@ function getStreams(id, type, season, episode) {
             });
             if (!candidateRes.ok) continue;
             const candidateHtml = yield candidateRes.text();
-            if (id.toString().startsWith("tt")) {
+            if (imdbId) {
               const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
               if (imdbMatches && imdbMatches.length > 0) {
-                const targetId = id.toString();
+                const targetId = imdbId;
                 const hasTarget = imdbMatches.includes(targetId);
                 const otherIds = imdbMatches.filter((m) => m !== targetId);
                 if (!hasTarget && otherIds.length > 0) {
-                  console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
-                  continue;
+                  if (title.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
+                    console.log(`[Guardaserie] Accepting "All'arrembaggio" despite IMDb mismatch (known alias).`);
+                  } else {
+                    console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
+                    continue;
+                  }
                 }
                 if (hasTarget) {
                   console.log(`[Guardaserie] Verified ${candidate.url} with IMDb match.`);
@@ -662,8 +853,30 @@ function getStreams(id, type, season, episode) {
       }
       console.log(`[Guardaserie] Found show URL: ${showUrl}`);
       const episodeStr = `${season}x${episode}`;
-      const episodeRegex = new RegExp(`data-num="${episodeStr}"`, "i");
-      const episodeMatch = episodeRegex.exec(showHtml);
+      const episodeStrPadded = `${season}x${episode.toString().padStart(2, "0")}`;
+      let episodeRegex = new RegExp(`data-num="${episodeStr}"`, "i");
+      let episodeMatch = episodeRegex.exec(showHtml);
+      if (!episodeMatch) {
+        episodeRegex = new RegExp(`data-num="${episodeStrPadded}"`, "i");
+        episodeMatch = episodeRegex.exec(showHtml);
+      }
+      if (!episodeMatch && mappedSeason) {
+        const mappedStr = `${mappedSeason}x${mappedEpisode}`;
+        const mappedStrPadded = `${mappedSeason}x${mappedEpisode.toString().padStart(2, "0")}`;
+        episodeRegex = new RegExp(`data-num="${mappedStr}"`, "i");
+        episodeMatch = episodeRegex.exec(showHtml);
+        if (!episodeMatch) {
+          episodeRegex = new RegExp(`data-num="${mappedStrPadded}"`, "i");
+          episodeMatch = episodeRegex.exec(showHtml);
+        }
+        if (episodeMatch) console.log(`[Guardaserie] Found mapped episode ${mappedSeason}x${mappedEpisode}`);
+      }
+      if (!episodeMatch && season === 1) {
+        const textRegex = new RegExp(`${season}x${episode}`, "i");
+        if (textRegex.test(showHtml)) {
+          console.log(`[Guardaserie] Found text match for ${season}x${episode}, but no data-num. Scanning for links...`);
+        }
+      }
       if (!episodeMatch) {
         console.log(`[Guardaserie] Episode ${episodeStr} not found`);
         return [];
@@ -685,6 +898,9 @@ function getStreams(id, type, season, episode) {
       console.log(`[Guardaserie] Found ${links.length} potential links`);
       const streamPromises = links.map((link) => __async2(null, null, function* () {
         try {
+          const displaySeason = mappedSeason || season;
+          const displayEpisode = mappedEpisode || episode;
+          const displayName = `${title} ${displaySeason}x${displayEpisode}`;
           let streamUrl = null;
           let playerName = "Unknown";
           if (link.includes("dropload")) {
@@ -692,13 +908,11 @@ function getStreams(id, type, season, episode) {
             if (extracted && extracted.url) {
               let quality = "HD";
               const lowerUrl = extracted.url.toLowerCase();
-              if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-              else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+              if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
               else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
               else if (lowerUrl.includes("360")) quality = "360p";
               const normalizedQuality = getQualityFromName(quality);
-              const displayName = `${title} ${season}x${episode}`;
               return {
                 url: extracted.url,
                 headers: extracted.headers,
@@ -720,7 +934,6 @@ function getStreams(id, type, season, episode) {
               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
               else if (lowerUrl.includes("360")) quality = "360p";
               const normalizedQuality = getQualityFromName(quality);
-              const displayName = `${title} ${season}x${episode}`;
               return {
                 url: streamUrl,
                 name: `Guardaserie - ${playerName}`,
@@ -740,7 +953,6 @@ function getStreams(id, type, season, episode) {
               else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
               else if (lowerUrl.includes("360")) quality = "360p";
               const normalizedQuality = getQualityFromName(quality);
-              const displayName = `${title} ${season}x${episode}`;
               return {
                 url: extracted.url,
                 headers: extracted.headers,

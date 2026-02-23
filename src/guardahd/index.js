@@ -23,6 +23,7 @@ const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo } = require('../extractors');
+const { getTmdbFromKitsu } = require('../tmdb_helper.js');
 
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return 'Unknown';
@@ -53,40 +54,6 @@ function getQualityFromName(qualityStr) {
   }
 
   return 'Unknown';
-}
-
-async function resolveKitsuId(kitsuId) {
-    try {
-        const id = String(kitsuId).replace("kitsu:", "");
-        const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
-        if (!mappingResponse.ok) return null;
-        const mappingData = await mappingResponse.json();
-        
-        if (!mappingData || !mappingData.data) return null;
-
-        // 1. Prefer IMDb (Direct for GuardaHD)
-        const imdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'imdb');
-        if (imdbMapping) {
-             return imdbMapping.attributes.externalId;
-        }
-
-        // 2. Fallback to TVDB -> TMDB
-        const tvdbMapping = mappingData.data.find(m => m.attributes.externalSite === 'thetvdb/series' || m.attributes.externalSite === 'thetvdb');
-        if (tvdbMapping) {
-            const tvdbId = String(tvdbMapping.attributes.externalId).split('/')[0];
-            const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
-            const findResponse = await fetch(findUrl);
-            const findData = await findResponse.json();
-            
-            if (findData.tv_results?.length > 0) return findData.tv_results[0].id;
-            if (findData.movie_results?.length > 0) return findData.movie_results[0].id;
-        }
-        
-        return null;
-    } catch (e) {
-        console.error("[Kitsu] Error converting ID:", e);
-        return null;
-    }
 }
 
 function getImdbId(tmdbId, type) {
@@ -126,9 +93,9 @@ function getMetadata(id, type) {
       let queryId = id;
 
       if (String(id).startsWith("kitsu:")) {
-          const resolvedId = yield resolveKitsuId(id);
-          if (resolvedId) {
-             queryId = resolvedId;
+          const resolved = yield getTmdbFromKitsu(id);
+          if (resolved && resolved.tmdbId) {
+             queryId = resolved.tmdbId;
              console.log(`[GuardaHD] Resolved Kitsu ID ${id} to ID ${queryId}`);
           } else {
              console.log(`[GuardaHD] Could not convert ${id} to usable ID`);
@@ -166,10 +133,14 @@ function getStreams(id, type, season, episode) {
     let cleanId = id.toString();
     
     if (cleanId.startsWith("kitsu:")) {
-        const resolvedId = yield resolveKitsuId(cleanId);
-        if (resolvedId) {
-            console.log(`[GuardaHD] Resolved Kitsu ID ${cleanId} to ID ${resolvedId}`);
-            cleanId = resolvedId.toString();
+        const resolved = yield getTmdbFromKitsu(cleanId);
+        if (resolved && resolved.tmdbId) {
+            console.log(`[GuardaHD] Resolved Kitsu ID ${cleanId} to ID ${resolved.tmdbId}`);
+            cleanId = String(resolved.tmdbId);
+            if (resolved.season) {
+                console.log(`[GuardaHD] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
+                season = resolved.season;
+            }
         } else {
             console.log(`[GuardaHD] Could not convert ${cleanId} to usable ID`);
             return [];
