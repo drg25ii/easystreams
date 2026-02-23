@@ -183,29 +183,18 @@ var require_supervideo = __commonJS({
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          if (!refererBase) refererBase = new URL(url).origin + "/";
-          let directUrl = url.replace("/e/", "/").replace("/embed-", "/");
-          let response = yield fetch(directUrl, {
+          const id = url.split("/").pop();
+          const embedUrl = `https://supervideo.tv/e/${id}`;
+          if (!refererBase) refererBase = "https://guardahd.stream/";
+          let response = yield fetch(embedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
           let html = yield response.text();
-          if (html.includes("This video can be watched as embed only")) {
-            let embedUrl = url;
-            if (!embedUrl.includes("/e/") && !embedUrl.includes("/embed-")) {
-              embedUrl = directUrl.replace(".cc/", ".cc/e/");
-            }
-            response = yield fetch(embedUrl, {
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": refererBase
-              }
-            });
-            html = yield response.text();
-          }
           if (html.includes("Cloudflare") || response.status === 403) {
+            console.log(`[Extractors] SuperVideo (tv) returned 403/Cloudflare`);
             return null;
           }
           const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;

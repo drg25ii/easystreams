@@ -3,29 +3,24 @@ const { USER_AGENT, unPack } = require('./common');
 async function extractSuperVideo(url, refererBase = null) {
   try {
     if (url.startsWith("//")) url = "https:" + url;
-    if (!refererBase) refererBase = new URL(url).origin + "/";
-    let directUrl = url.replace("/e/", "/").replace("/embed-", "/");
-    let response = await fetch(directUrl, {
+    
+    // Extract ID and force .tv domain and embed format
+    // URLs can be: supervideo.cc/y/ID, supervideo.cc/e/ID, supervideo.cc/ID
+    const id = url.split('/').pop();
+    const embedUrl = `https://supervideo.tv/e/${id}`;
+    
+    if (!refererBase) refererBase = "https://guardahd.stream/"; // Default referer if missing
+
+    let response = await fetch(embedUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         "Referer": refererBase
       }
     });
     let html = await response.text();
-    if (html.includes("This video can be watched as embed only")) {
-      let embedUrl = url;
-      if (!embedUrl.includes("/e/") && !embedUrl.includes("/embed-")) {
-        embedUrl = directUrl.replace(".cc/", ".cc/e/");
-      }
-      response = await fetch(embedUrl, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Referer": refererBase
-        }
-      });
-      html = await response.text();
-    }
+
     if (html.includes("Cloudflare") || response.status === 403) {
+      console.log(`[Extractors] SuperVideo (tv) returned 403/Cloudflare`);
       return null;
     }
     const packedRegex = /eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)/;
