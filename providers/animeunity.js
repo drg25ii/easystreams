@@ -390,25 +390,6 @@ var require_vixcloud = __commonJS({
           if (!response.ok) return null;
           const html = yield response.text();
           const streams = [];
-          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
-          const downloadMatch = downloadRegex.exec(html);
-          if (downloadMatch) {
-            const downloadUrl = downloadMatch[1];
-            let quality = "Unknown";
-            if (downloadUrl.includes("1080p")) quality = "1080p";
-            else if (downloadUrl.includes("720p")) quality = "720p";
-            else if (downloadUrl.includes("480p")) quality = "480p";
-            else if (downloadUrl.includes("360p")) quality = "360p";
-            streams.push({
-              url: downloadUrl,
-              quality,
-              type: "direct",
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": "https://vixcloud.co/"
-              }
-            });
-          }
           const tokenRegex = /'token':\s*'(\w+)'/;
           const expiresRegex = /'expires':\s*'(\d+)'/;
           const urlRegex = /url:\s*'([^']+)'/;
@@ -1400,22 +1381,6 @@ function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = false) 
         const match = str.match(/(\d{3,4}p)/i);
         return match ? match[1] : "Unknown";
       };
-      if (targetEpisode.link && targetEpisode.link.startsWith("http")) {
-        let quality = extractQuality(targetEpisode.link);
-        if (quality === "Unknown") quality = extractQuality(targetEpisode.file_name);
-        const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
-        streams.push({
-          name: "AnimeUnity" + labelSuffix,
-          title: displayTitle,
-          url: targetEpisode.link,
-          quality,
-          type: "direct",
-          headers: {
-            "User-Agent": USER_AGENT,
-            "Referer": BASE_URL
-          }
-        });
-      }
       if (targetEpisode.scws_id) {
         try {
           const embedApiUrl = `${BASE_URL}/embed-url/${targetEpisode.id}`;

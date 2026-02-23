@@ -14,7 +14,8 @@ async function extractVixCloud(url) {
 
         const streams = [];
 
-        // Extract Direct MP4 (downloadUrl)
+        /*
+        // Extract Direct MP4 (downloadUrl) - Disabled to prioritize M3U8
         const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
         const downloadMatch = downloadRegex.exec(html);
         
@@ -36,6 +37,7 @@ async function extractVixCloud(url) {
                 }
             });
         }
+        */
 
         // Extract HLS (streams) using Python extractor logic
         const tokenRegex = /'token':\s*'(\w+)'/;
