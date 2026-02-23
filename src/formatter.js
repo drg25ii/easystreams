@@ -86,7 +86,9 @@ function formatStream(stream, providerName) {
         language: language,
         // Mark as formatted
         _nuvio_formatted: true,
-        behaviorHints: behaviorHints
+        behaviorHints: behaviorHints,
+        // Explicitly ensure root headers are preserved for Nuvio
+        headers: stream.headers
     };
 }
 
