@@ -543,6 +543,52 @@ var require_extractors = __commonJS({
   }
 });
 
+// src/fetch_helper.js
+var require_fetch_helper = __commonJS({
+  "src/fetch_helper.js"(exports2, module2) {
+    var FETCH_TIMEOUT = 15e3;
+    var originalFetch = global.fetch;
+    if (!originalFetch) {
+      try {
+        const nodeFetch = require("node-fetch");
+        originalFetch = nodeFetch;
+        global.fetch = nodeFetch;
+        global.Headers = nodeFetch.Headers;
+        global.Request = nodeFetch.Request;
+        global.Response = nodeFetch.Response;
+      } catch (e) {
+        console.warn("No fetch implementation found and node-fetch is not available!");
+      }
+    }
+    var fetchWithTimeout = function(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        if (options.signal) {
+          return originalFetch(url, options);
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, options.timeout || FETCH_TIMEOUT);
+        try {
+          const response = yield originalFetch(url, __spreadProps(__spreadValues({}, options), {
+            signal: controller.signal
+          }));
+          return response;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      });
+    };
+    global.fetch = fetchWithTimeout;
+    module2.exports = { fetchWithTimeout };
+  }
+});
+
 // src/tmdb_helper.js
 var require_tmdb_helper = __commonJS({
   "src/tmdb_helper.js"(exports2, module2) {
@@ -794,6 +840,7 @@ var BASE_URL = "https://guardahd.stream";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 var { extractMixDrop, extractDropLoad, extractSuperVideo } = require_extractors();
+require_fetch_helper();
 var { getTmdbFromKitsu } = require_tmdb_helper();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();

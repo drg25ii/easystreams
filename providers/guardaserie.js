@@ -45,7 +45,7 @@ var __async = (__this, __arguments, generator) => {
 // src/extractors/common.js
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     function unPack(p, a, c, k, e, d) {
       e = function(c2) {
         return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
@@ -70,7 +70,7 @@ var require_common = __commonJS({
       return p;
     }
     module2.exports = {
-      USER_AGENT,
+      USER_AGENT: USER_AGENT2,
       unPack
     };
   }
@@ -79,14 +79,14 @@ var require_common = __commonJS({
 // src/extractors/mixdrop.js
 var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractMixDrop2(url, refererBase = "https://m1xdrop.net/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -107,7 +107,7 @@ var require_mixdrop = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT,
+                  "User-Agent": USER_AGENT2,
                   "Referer": "https://m1xdrop.net/",
                   "Origin": "https://m1xdrop.net"
                 }
@@ -128,7 +128,7 @@ var require_mixdrop = __commonJS({
 // src/extractors/dropload.js
 var require_dropload = __commonJS({
   "src/extractors/dropload.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractDropLoad2(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -136,7 +136,7 @@ var require_dropload = __commonJS({
           if (!refererBase) refererBase = new URL(url).origin + "/";
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -157,7 +157,7 @@ var require_dropload = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT,
+                  "User-Agent": USER_AGENT2,
                   "Referer": url,
                   "Origin": new URL(url).origin
                 }
@@ -178,7 +178,7 @@ var require_dropload = __commonJS({
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractSuperVideo2(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -188,7 +188,7 @@ var require_supervideo = __commonJS({
           if (!refererBase) refererBase = "https://guardahd.stream/";
           let response = yield fetch(embedUrl, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -226,7 +226,7 @@ var require_supervideo = __commonJS({
 // src/extractors/streamtape.js
 var require_streamtape = __commonJS({
   "src/extractors/streamtape.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractStreamTape(url) {
       return __async(this, null, function* () {
         try {
@@ -259,14 +259,14 @@ var require_streamtape = __commonJS({
 // src/extractors/uqload.js
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractUqload2(url, refererBase = "https://uqload.io/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -280,7 +280,7 @@ var require_uqload = __commonJS({
             return {
               url: streamUrl,
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": "https://uqload.io/"
               }
             };
@@ -299,14 +299,14 @@ var require_uqload = __commonJS({
 // src/extractors/upstream.js
 var require_upstream = __commonJS({
   "src/extractors/upstream.js"(exports2, module2) {
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     function extractUpstream2(url, refererBase = "https://upstream.to/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": refererBase
             }
           });
@@ -327,7 +327,7 @@ var require_upstream = __commonJS({
               return {
                 url: streamUrl,
                 headers: {
-                  "User-Agent": USER_AGENT,
+                  "User-Agent": USER_AGENT2,
                   "Referer": "https://upstream.to/"
                 }
               };
@@ -377,14 +377,14 @@ var require_vidoza = __commonJS({
 // src/quality_helper.js
 var require_quality_helper = __commonJS({
   "src/quality_helper.js"(exports2, module2) {
-    var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
     function checkQualityFromPlaylist2(_0) {
       return __async(this, arguments, function* (url, headers = {}) {
         try {
           if (!url.includes(".m3u8")) return null;
           const finalHeaders = __spreadValues({}, headers);
           if (!finalHeaders["User-Agent"]) {
-            finalHeaders["User-Agent"] = USER_AGENT;
+            finalHeaders["User-Agent"] = USER_AGENT2;
           }
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 3e3);
@@ -430,14 +430,14 @@ var require_quality_helper = __commonJS({
 // src/extractors/vixcloud.js
 var require_vixcloud = __commonJS({
   "src/extractors/vixcloud.js"(exports2, module2) {
-    var { USER_AGENT } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     var { checkQualityFromPlaylist: checkQualityFromPlaylist2 } = require_quality_helper();
     function extractVixCloud(url) {
       return __async(this, null, function* () {
         try {
           const response = yield fetch(url, {
             headers: {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": "https://www.animeunity.so/"
             }
           });
@@ -458,7 +458,7 @@ var require_vixcloud = __commonJS({
               quality,
               type: "direct",
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": "https://vixcloud.co/"
               }
             });
@@ -491,7 +491,7 @@ var require_vixcloud = __commonJS({
             }
             let quality = "Auto";
             const detectedQuality = yield checkQualityFromPlaylist2(finalUrl, {
-              "User-Agent": USER_AGENT,
+              "User-Agent": USER_AGENT2,
               "Referer": "https://vixcloud.co/"
             });
             if (detectedQuality) quality = detectedQuality;
@@ -500,7 +500,7 @@ var require_vixcloud = __commonJS({
               quality,
               type: "m3u8",
               headers: {
-                "User-Agent": USER_AGENT,
+                "User-Agent": USER_AGENT2,
                 "Referer": "https://vixcloud.co/"
               }
             });
@@ -527,7 +527,7 @@ var require_extractors = __commonJS({
     var { extractUpstream: extractUpstream2 } = require_upstream();
     var { extractVidoza } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
-    var { USER_AGENT, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
       extractDropLoad: extractDropLoad2,
@@ -537,9 +537,55 @@ var require_extractors = __commonJS({
       extractUpstream: extractUpstream2,
       extractVidoza,
       extractVixCloud,
-      USER_AGENT,
+      USER_AGENT: USER_AGENT2,
       unPack
     };
+  }
+});
+
+// src/fetch_helper.js
+var require_fetch_helper = __commonJS({
+  "src/fetch_helper.js"(exports2, module2) {
+    var FETCH_TIMEOUT = 15e3;
+    var originalFetch = global.fetch;
+    if (!originalFetch) {
+      try {
+        const nodeFetch = require("node-fetch");
+        originalFetch = nodeFetch;
+        global.fetch = nodeFetch;
+        global.Headers = nodeFetch.Headers;
+        global.Request = nodeFetch.Request;
+        global.Response = nodeFetch.Response;
+      } catch (e) {
+        console.warn("No fetch implementation found and node-fetch is not available!");
+      }
+    }
+    var fetchWithTimeout = function(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        if (options.signal) {
+          return originalFetch(url, options);
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, options.timeout || FETCH_TIMEOUT);
+        try {
+          const response = yield originalFetch(url, __spreadProps(__spreadValues({}, options), {
+            signal: controller.signal
+          }));
+          return response;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      });
+    };
+    global.fetch = fetchWithTimeout;
+    module2.exports = { fetchWithTimeout };
   }
 });
 
@@ -792,7 +838,9 @@ var __async2 = (__this, __arguments, generator) => {
 };
 var BASE_URL = "https://guardaserietv.best";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 var { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require_extractors();
+require_fetch_helper();
 var { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require_tmdb_helper();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var { formatStream } = require_formatter();
@@ -865,11 +913,64 @@ function getTmdbIdFromImdb(imdbId, type) {
       if (!response.ok) return null;
       const data = yield response.json();
       if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
-      if (type === "tv" && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+      if (type === "tv") {
+        if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
+        if (Array.isArray(data.tv_episode_results) && data.tv_episode_results.length > 0) {
+          const ep = data.tv_episode_results[0];
+          if (ep && ep.show_id) return ep.show_id;
+        }
+        if (Array.isArray(data.tv_season_results) && data.tv_season_results.length > 0) {
+          const s = data.tv_season_results[0];
+          if (s && s.show_id) return s.show_id;
+        }
+      }
       return null;
     } catch (e) {
       console.error("[Guardaserie] ID conversion error:", e);
       return null;
+    }
+  });
+}
+function verifyMoviePlayer(url, targetYear) {
+  return __async2(this, null, function* () {
+    try {
+      console.log(`[Guardaserie] Verifying via MoviePlayer: ${url}`);
+      const response = yield fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT
+        }
+      });
+      if (!response.ok) return false;
+      const html = yield response.text();
+      const yearMatch1 = html.match(/trasmessa dal (\d{4})/i);
+      if (yearMatch1) {
+        const found = parseInt(yearMatch1[1]);
+        if (Math.abs(found - targetYear) <= 1) {
+          console.log(`[Guardaserie] MoviePlayer verified year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const yearMatch2 = html.match(/Prima messa in onda originale.*?(\d{4})/i);
+      if (yearMatch2) {
+        const found = parseInt(yearMatch2[1]);
+        if (Math.abs(found - targetYear) <= 1) {
+          console.log(`[Guardaserie] MoviePlayer verified year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const titleMatch = html.match(new RegExp("<title>.*\\(.*(\\d{4}).*\\).*<\\/title>", "is"));
+      if (titleMatch) {
+        const found = parseInt(titleMatch[1]);
+        if (Math.abs(found - targetYear) <= 2) {
+          console.log(`[Guardaserie] MoviePlayer verified title year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      console.log(`[Guardaserie] MoviePlayer verification failed. Target Year: ${targetYear}`);
+      return false;
+    } catch (e) {
+      console.error("[Guardaserie] MoviePlayer error:", e);
+      return false;
     }
   });
 }
@@ -881,11 +982,11 @@ function getStreams(id, type, season, episode) {
       let tmdbId = id;
       let imdbId = null;
       if (id.toString().startsWith("tt")) {
-        imdbId = id.toString();
-        tmdbId = yield getTmdbIdFromImdb(id, type);
+        const imdbCore = (id.toString().match(/tt\d{7,8}/) || [])[0] || id.toString();
+        imdbId = imdbCore;
+        tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
         if (!tmdbId) {
-          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
-          return [];
+          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID. Continuing with IMDb ID.`);
         }
       } else if (id.toString().startsWith("kitsu:")) {
         const resolved = yield getTmdbFromKitsu(id);
@@ -916,12 +1017,17 @@ function getStreams(id, type, season, episode) {
       }
       let showInfo = null;
       try {
-        showInfo = yield getShowInfo(tmdbId, type);
+        if (tmdbId) showInfo = yield getShowInfo(tmdbId, type);
       } catch (e) {
         console.error("[Guardaserie] Error fetching show info:", e);
       }
-      if (!showInfo) return [];
-      const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
+      if (!showInfo && !imdbId) return [];
+      let title = "Serie TV";
+      if (showInfo) {
+        title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
+      } else if (imdbId) {
+        title = imdbId;
+      }
       let mappedSeason = null;
       let mappedEpisode = null;
       if (season === 1 && episode > 20 && tmdbId) {
@@ -936,84 +1042,203 @@ function getStreams(id, type, season, episode) {
           console.error("[Guardaserie] Error mapping episode:", e);
         }
       }
-      const year = showInfo.first_air_date ? showInfo.first_air_date.split("-")[0] : "";
-      console.log(`[Guardaserie] Searching for: ${title} (${year})`);
-      const params = new URLSearchParams();
-      params.append("do", "search");
-      params.append("subaction", "search");
-      params.append("story", title);
-      const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
-      const searchResponse = yield fetch(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": BASE_URL
-        }
-      });
-      const searchHtml = yield searchResponse.text();
-      const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
-      let match;
-      let showUrl = null;
+      const year = showInfo && showInfo.first_air_date ? showInfo.first_air_date.split("-")[0] : "";
       const metaYear = year ? parseInt(year) : null;
-      const candidates = [];
-      while ((match = resultRegex.exec(searchHtml)) !== null) {
-        const foundUrl = match[1];
-        const foundTitle = match[2];
-        const foundYearStr = match[3];
-        if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
-          candidates.push({
-            url: foundUrl,
-            title: foundTitle,
-            year: foundYearStr
-          });
-        }
-      }
+      let showUrl = null;
       let showHtml = null;
-      for (const candidate of candidates) {
-        let matchesYear = true;
-        if (metaYear) {
-          const yearMatch = candidate.year.match(/(\d{4})/);
-          if (yearMatch) {
-            const foundYear = parseInt(yearMatch[1]);
-            if (Math.abs(foundYear - metaYear) > 2) {
-              matchesYear = false;
+      if (imdbId) {
+        console.log(`[Guardaserie] Searching by IMDb ID: ${imdbId}`);
+        try {
+          const params = new URLSearchParams();
+          params.append("do", "search");
+          params.append("subaction", "search");
+          params.append("story", imdbId);
+          const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
+          const searchResponse = yield fetch(searchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": BASE_URL
+            }
+          });
+          if (searchResponse.ok) {
+            const searchHtml = yield searchResponse.text();
+            const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i;
+            const match = resultRegex.exec(searchHtml);
+            if (match) {
+              const foundUrl = match[1];
+              console.log(`[Guardaserie] Found match by IMDb ID: ${foundUrl}`);
+              const pageResponse = yield fetch(foundUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Referer": BASE_URL
+                }
+              });
+              if (pageResponse.ok) {
+                showHtml = yield pageResponse.text();
+                showUrl = foundUrl;
+              }
             }
           }
+        } catch (e) {
+          console.error(`[Guardaserie] Error searching by IMDb ID:`, e);
         }
-        if (matchesYear) {
-          console.log(`[Guardaserie] Verifying candidate: ${candidate.title} (${candidate.year})`);
-          try {
-            const candidateRes = yield fetch(candidate.url, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": BASE_URL
-              }
+      }
+      if (!showUrl) {
+        console.log(`[Guardaserie] Searching by Title: ${title} (${year})`);
+        const params = new URLSearchParams();
+        params.append("do", "search");
+        params.append("subaction", "search");
+        params.append("story", title);
+        const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
+        const searchResponse = yield fetch(searchUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": BASE_URL
+          }
+        });
+        const searchHtml = yield searchResponse.text();
+        const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
+        let match;
+        const candidates2 = [];
+        while ((match = resultRegex.exec(searchHtml)) !== null) {
+          const foundUrl = match[1];
+          const foundTitle = match[2];
+          const foundYearStr = match[3];
+          if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
+            candidates2.push({
+              url: foundUrl,
+              title: foundTitle,
+              year: foundYearStr
             });
-            if (!candidateRes.ok) continue;
-            const candidateHtml = yield candidateRes.text();
-            if (imdbId) {
-              const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
-              if (imdbMatches && imdbMatches.length > 0) {
-                const targetId = imdbId;
-                const hasTarget = imdbMatches.includes(targetId);
-                const otherIds = imdbMatches.filter((m) => m !== targetId);
-                if (!hasTarget && otherIds.length > 0) {
-                  if (title.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
-                    console.log(`[Guardaserie] Accepting "All'arrembaggio" despite IMDb mismatch (known alias).`);
-                  } else {
-                    console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
-                    continue;
-                  }
-                }
-                if (hasTarget) {
-                  console.log(`[Guardaserie] Verified ${candidate.url} with IMDb match.`);
-                }
+          }
+        }
+        for (const candidate of candidates2) {
+          let matchesYear = true;
+          if (metaYear) {
+            const yearMatch = candidate.year.match(/(\d{4})/);
+            if (yearMatch) {
+              const foundYear = parseInt(yearMatch[1]);
+              if (Math.abs(foundYear - metaYear) > 2) {
+                matchesYear = false;
               }
             }
-            showUrl = candidate.url;
-            showHtml = candidateHtml;
-            break;
-          } catch (e) {
-            console.error(`[Guardaserie] Error verifying candidate ${candidate.url}:`, e);
+          }
+          if (matchesYear) {
+            console.log(`[Guardaserie] Verifying candidate: ${candidate.title} (${candidate.year})`);
+            try {
+              const candidateRes = yield fetch(candidate.url, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Referer": BASE_URL
+                }
+              });
+              if (!candidateRes.ok) continue;
+              const candidateHtml = yield candidateRes.text();
+              let verifiedByLinks = false;
+              let verifiedByVars = false;
+              let imdbVarVal = null;
+              try {
+                const titleVarMatch = candidateHtml.match(/show_title\s*=\s*'([^']+)'/i);
+                const imdbVarMatch = candidateHtml.match(/show_imdb\s*=\s*'([^']+)'/i);
+                if (imdbVarMatch) imdbVarVal = imdbVarMatch[1];
+                if (imdbVarVal && imdbId && imdbVarVal === imdbId) {
+                  console.log(`[Guardaserie] Verified ${candidate.url} via show_imdb variable.`);
+                  verifiedByVars = true;
+                } else if (titleVarMatch) {
+                  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const a = norm(titleVarMatch[1]);
+                  const b = norm(title);
+                  if (a && b && (a.includes(b) || b.includes(a))) {
+                    console.log(`[Guardaserie] Tentatively verified ${candidate.url} via show_title variable.`);
+                    verifiedByVars = true;
+                  }
+                }
+              } catch (e) {
+              }
+              if (imdbId && imdbVarVal && imdbVarVal !== imdbId) {
+                console.log(`[Guardaserie] Rejected ${candidate.url} due to show_imdb mismatch (${imdbVarVal} != ${imdbId}).`);
+                continue;
+              }
+              if (!verifiedByVars) {
+                try {
+                  const tmdbLinkMatches = candidateHtml.match(/themoviedb\.org\/(?:tv|movie)\/(\d+)/g);
+                  if (tmdbLinkMatches && tmdbLinkMatches.length > 0 && tmdbId) {
+                    const foundIds = tmdbLinkMatches.map((l) => {
+                      const m = l.match(/\/(\d+)/);
+                      return m ? m[1] : null;
+                    }).filter(Boolean);
+                    if (foundIds.includes(String(tmdbId))) {
+                      console.log(`[Guardaserie] Verified ${candidate.url} via TMDB link.`);
+                      verifiedByLinks = true;
+                    } else {
+                      console.log(`[Guardaserie] Rejected ${candidate.url} due to TMDB mismatch.`);
+                      continue;
+                    }
+                  }
+                  if (!verifiedByLinks) {
+                    const mpLinkMatch = candidateHtml.match(/href=["'](https?:\/\/(?:www\.)?movieplayer\.it\/serietv\/[^"']+)["']/i);
+                    if (mpLinkMatch && metaYear) {
+                      const mpUrl = mpLinkMatch[1];
+                      const ok = yield verifyMoviePlayer(mpUrl, metaYear);
+                      if (ok) {
+                        verifiedByLinks = true;
+                        console.log(`[Guardaserie] Verified ${candidate.url} via MoviePlayer link.`);
+                      } else {
+                        console.log(`[Guardaserie] Rejected ${candidate.url} via MoviePlayer year mismatch.`);
+                        continue;
+                      }
+                    }
+                  }
+                  if (!verifiedByLinks && imdbId) {
+                    const imdbLinkMatches = candidateHtml.match(/imdb\.com\/title\/(tt\d{7,8})/g);
+                    if (imdbLinkMatches && imdbLinkMatches.length > 0) {
+                      const foundImdb = imdbLinkMatches.map((l) => {
+                        const m = l.match(/(tt\d{7,8})/);
+                        return m ? m[1] : null;
+                      }).filter(Boolean);
+                      if (foundImdb.includes(imdbId)) {
+                        console.log(`[Guardaserie] Verified ${candidate.url} via IMDb link.`);
+                        verifiedByLinks = true;
+                      } else {
+                        console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb link mismatch.`);
+                        continue;
+                      }
+                    }
+                  }
+                } catch (e) {
+                }
+              }
+              if (!verifiedByLinks && !verifiedByVars && imdbId) {
+                const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
+                if (imdbMatches && imdbMatches.length > 0) {
+                  const targetId = imdbId;
+                  const hasTarget = imdbMatches.includes(targetId);
+                  const otherIds = imdbMatches.filter((m) => m !== targetId);
+                  if (!hasTarget && otherIds.length > 0) {
+                    if (title.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
+                      console.log(`[Guardaserie] Accepting "All'arrembaggio" despite IMDb mismatch (known alias).`);
+                    } else {
+                      console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
+                      continue;
+                    }
+                  }
+                  if (hasTarget) {
+                    console.log(`[Guardaserie] Verified ${candidate.url} with IMDb match.`);
+                  }
+                }
+              }
+              if (verifiedByLinks || verifiedByVars) {
+                showUrl = candidate.url;
+                showHtml = candidateHtml;
+                break;
+              } else {
+                showUrl = candidate.url;
+                showHtml = candidateHtml;
+                break;
+              }
+            } catch (e) {
+              console.error(`[Guardaserie] Error verifying candidate ${candidate.url}:`, e);
+            }
           }
         }
       }

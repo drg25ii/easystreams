@@ -207,6 +207,52 @@ var require_tmdb_helper = __commonJS({
   }
 });
 
+// src/fetch_helper.js
+var require_fetch_helper = __commonJS({
+  "src/fetch_helper.js"(exports2, module2) {
+    var FETCH_TIMEOUT = 15e3;
+    var originalFetch = global.fetch;
+    if (!originalFetch) {
+      try {
+        const nodeFetch = require("node-fetch");
+        originalFetch = nodeFetch;
+        global.fetch = nodeFetch;
+        global.Headers = nodeFetch.Headers;
+        global.Request = nodeFetch.Request;
+        global.Response = nodeFetch.Response;
+      } catch (e) {
+        console.warn("No fetch implementation found and node-fetch is not available!");
+      }
+    }
+    var fetchWithTimeout = function(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        if (options.signal) {
+          return originalFetch(url, options);
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, options.timeout || FETCH_TIMEOUT);
+        try {
+          const response = yield originalFetch(url, __spreadProps(__spreadValues({}, options), {
+            signal: controller.signal
+          }));
+          return response;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      });
+    };
+    global.fetch = fetchWithTimeout;
+    module2.exports = { fetchWithTimeout };
+  }
+});
+
 // src/formatter.js
 var require_formatter = __commonJS({
   "src/formatter.js"(exports2, module2) {
@@ -323,6 +369,7 @@ var require_quality_helper = __commonJS({
 
 // src/animeworld/index.js
 var { getTmdbFromKitsu, isAnime } = require_tmdb_helper();
+require_fetch_helper();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
 var BASE_URL = "https://www.animeworld.ac";
@@ -1047,6 +1094,20 @@ function getStreams(id, type, season, episode, providedMetadata = null) {
           if (!valid) {
             console.log("[AnimeWorld] Standard search results seem irrelevant. Discarding.");
             candidates = [];
+          }
+        }
+        if (candidates.length === 0 && title.includes("-")) {
+          const dehyphenated = title.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+          if (dehyphenated !== title) {
+            console.log(`[AnimeWorld] Dehyphenated search: ${dehyphenated}`);
+            candidates = yield searchAnime(dehyphenated);
+            if (candidates.length > 0) {
+              const valid = candidates.some((c) => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title, dehyphenated));
+              if (!valid) {
+                console.log("[AnimeWorld] Dehyphenated search results seem irrelevant. Discarding.");
+                candidates = [];
+              }
+            }
           }
         }
       }

@@ -5,7 +5,7 @@
     {
       "id": "easystreams-eurostreaming",
       "name": "EuroStreaming",
-      "version": "1.0.34",
+      "version": "1.0.35",
       "description": "TV Series from EuroStreaming",
       "resources": [
         "stream"
@@ -19,7 +19,8 @@
       ],
       "idPrefixes": [
         "tmdb:",
-        "tt"
+        "tt",
+        "kitsu:"
       ],
       "filename": "providers/eurostreaming.js",
       "supportedTypes": [
@@ -30,7 +31,7 @@
     {
       "id": "easystreams-guardahd",
       "name": "GuardaHD",
-      "version": "1.0.26",
+      "version": "1.0.27",
       "description": "Movies from GuardaHD",
       "resources": [
         "stream"
@@ -55,7 +56,7 @@
     {
       "id": "easystreams-guardaserie",
       "name": "Guardaserie",
-      "version": "1.0.25",
+      "version": "1.0.26",
       "description": "TV Series from Guardaserie",
       "resources": [
         "stream"
@@ -69,7 +70,8 @@
       ],
       "idPrefixes": [
         "tmdb:",
-        "tt"
+        "tt",
+        "kitsu:"
       ],
       "filename": "providers/guardaserie.js",
       "supportedTypes": [
@@ -80,7 +82,7 @@
     {
       "id": "easystreams-streamingcommunity",
       "name": "StreamingCommunity",
-      "version": "1.1.10",
+      "version": "1.1.11",
       "description": "Movies and Series from StreamingCommunity",
       "resources": [
         "stream"
@@ -106,7 +108,7 @@
     {
       "id": "easystreams-animeunity",
       "name": "AnimeUnity",
-      "version": "1.0.14",
+      "version": "1.0.15",
       "description": "Anime from AnimeUnity",
       "resources": [
         "stream"
@@ -120,7 +122,8 @@
       ],
       "idPrefixes": [
         "tmdb:",
-        "tt"
+        "tt",
+        "kitsu:"
       ],
       "filename": "providers/animeunity.js",
       "supportedTypes": [
@@ -132,7 +135,7 @@
     {
       "id": "easystreams-animeworld",
       "name": "AnimeWorld",
-      "version": "1.0.19",
+      "version": "1.0.20",
       "description": "Anime from AnimeWorld",
       "resources": [
         "stream"
@@ -146,7 +149,8 @@
       ],
       "idPrefixes": [
         "tmdb:",
-        "tt"
+        "tt",
+        "kitsu:"
       ],
       "filename": "providers/animeworld.js",
       "supportedTypes": [

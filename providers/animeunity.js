@@ -543,6 +543,52 @@ var require_extractors = __commonJS({
   }
 });
 
+// src/fetch_helper.js
+var require_fetch_helper = __commonJS({
+  "src/fetch_helper.js"(exports2, module2) {
+    var FETCH_TIMEOUT = 15e3;
+    var originalFetch = global.fetch;
+    if (!originalFetch) {
+      try {
+        const nodeFetch = require("node-fetch");
+        originalFetch = nodeFetch;
+        global.fetch = nodeFetch;
+        global.Headers = nodeFetch.Headers;
+        global.Request = nodeFetch.Request;
+        global.Response = nodeFetch.Response;
+      } catch (e) {
+        console.warn("No fetch implementation found and node-fetch is not available!");
+      }
+    }
+    var fetchWithTimeout = function(_0) {
+      return __async(this, arguments, function* (url, options = {}) {
+        if (options.signal) {
+          return originalFetch(url, options);
+        }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, options.timeout || FETCH_TIMEOUT);
+        try {
+          const response = yield originalFetch(url, __spreadProps(__spreadValues({}, options), {
+            signal: controller.signal
+          }));
+          return response;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      });
+    };
+    global.fetch = fetchWithTimeout;
+    module2.exports = { fetchWithTimeout };
+  }
+});
+
 // src/tmdb_helper.js
 var require_tmdb_helper = __commonJS({
   "src/tmdb_helper.js"(exports2, module2) {
@@ -771,6 +817,7 @@ ${pName}`;
 
 // src/animeunity/index.js
 var { extractVixCloud } = require_extractors();
+require_fetch_helper();
 var { getTmdbFromKitsu, isAnime } = require_tmdb_helper();
 var { formatStream } = require_formatter();
 var { checkQualityFromPlaylist } = require_quality_helper();
@@ -945,22 +992,22 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     if (specialCandidates.length > 0) {
       const specialTitleMatch = specialCandidates.find((c) => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
       if (specialTitleMatch) {
-        if (checkSimilarity(specialTitleMatch.title, title) || checkSimilarity(specialTitleMatch.title, originalTitle)) {
+        if (checkSimilarity(specialTitleMatch.title, title) || checkSimilarity(specialTitleMatch.title_eng, title) || (checkSimilarity(specialTitleMatch.title, originalTitle) || checkSimilarity(specialTitleMatch.title_eng, originalTitle))) {
           return specialTitleMatch;
         }
       }
       const firstSpecial = specialCandidates[0];
-      if (checkSimilarity(firstSpecial.title, title) || checkSimilarity(firstSpecial.title, originalTitle)) {
+      if (checkSimilarity(firstSpecial.title, title) || checkSimilarity(firstSpecial.title_eng, title) || (checkSimilarity(firstSpecial.title, originalTitle) || checkSimilarity(firstSpecial.title_eng, originalTitle))) {
         return firstSpecial;
       }
     }
     const titleMatch = filteredCandidates.find((c) => (c.title || "").includes("Special") || (c.title_eng || "").includes("Special"));
     if (titleMatch) {
-      if (checkSimilarity(titleMatch.title, title) || checkSimilarity(titleMatch.title, originalTitle)) {
+      if (checkSimilarity(titleMatch.title, title) || checkSimilarity(titleMatch.title_eng, title) || (checkSimilarity(titleMatch.title, originalTitle) || checkSimilarity(titleMatch.title_eng, originalTitle))) {
         return titleMatch;
       }
     }
-    const anyMatch = filteredCandidates.find((c) => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
+    const anyMatch = filteredCandidates.find((c) => checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title) || (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle)));
     if (anyMatch) return anyMatch;
     console.log("[AnimeUnity] No season 0 match found passing similarity check");
     return null;
@@ -1066,17 +1113,17 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
       const t = (c.title || "").trim();
       const te = (c.title_eng || "").trim();
       if (hasNumberSuffix(t) || hasNumberSuffix(te)) return false;
-      if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+      if (checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title) || (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
       if (metadata.alternatives) {
-        return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title));
+        return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title) || checkSimilarity(c.title_eng, alt.title));
       }
       return false;
     });
     if (noNumberMatch) return noNumberMatch;
     const anyMatch = sorted.find((c) => {
-      if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+      if (checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title) || (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
       if (metadata.alternatives) {
-        return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title));
+        return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title) || checkSimilarity(c.title_eng, alt.title));
       }
       return false;
     });
@@ -1217,6 +1264,13 @@ function getStreams(id, type, season, episode) {
       if (candidates.length === 0) {
         console.log(`[AnimeUnity] Standard search: ${title}`);
         candidates = yield searchAnime(title);
+        if (candidates.length === 0 && title.includes("-")) {
+          const dehyphenated = title.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+          if (dehyphenated !== title) {
+            console.log(`[AnimeUnity] Dehyphenated search: ${dehyphenated}`);
+            candidates = yield searchAnime(dehyphenated);
+          }
+        }
         if (candidates.length === 0 && isMovie) {
           if (title.includes(" - ")) {
             const colonTitle = title.replace(" - ", ": ");
@@ -1267,9 +1321,9 @@ function getStreams(id, type, season, episode) {
         candidates = yield searchAnime(originalTitle);
         if (candidates.length > 0) {
           const valid = candidates.some((c) => {
-            if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+            if (checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title) || (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
             if (metadata.alternatives) {
-              return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title));
+              return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title) || checkSimilarity(c.title_eng, alt.title));
             }
             return false;
           });
@@ -1288,9 +1342,9 @@ function getStreams(id, type, season, episode) {
           const res = yield searchAnime(altTitle);
           if (res && res.length > 0) {
             const valid = res.some((c) => {
-              if (checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle)) return true;
+              if (checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title) || (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
               if (metadata.alternatives) {
-                return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title));
+                return metadata.alternatives.some((alt) => checkSimilarity(c.title, alt.title) || checkSimilarity(c.title_eng, alt.title));
               }
               return false;
             });
@@ -1355,6 +1409,23 @@ function getStreams(id, type, season, episode) {
           const newDubs = dubRes.filter((c) => (c.title || "").includes("(ITA)") || (c.title_eng || "").includes("(ITA)"));
           const betterDub = findBestMatch(newDubs, title, originalTitle, season, metadata);
           if (betterDub) bestDub = betterDub;
+        }
+      }
+      if (!bestSub && !bestDub) {
+        if (title.includes("-")) {
+          const dehyphenated = title.replace(/-/g, " ").replace(/\s+/g, " ").trim();
+          if (dehyphenated !== title) {
+            console.log(`[AnimeUnity] No match found. Retrying with dehyphenated title: ${dehyphenated}`);
+            const dehyphenRes = yield searchAnime(dehyphenated);
+            if (dehyphenRes && dehyphenRes.length > 0) {
+              const dhSubs = dehyphenRes.filter((c) => !(c.title || "").includes("(ITA)") && !(c.title_eng || "").includes("(ITA)"));
+              const dhDubs = dehyphenRes.filter((c) => (c.title || "").includes("(ITA)") || (c.title_eng || "").includes("(ITA)"));
+              if (dhSubs.length > 0) yield enrichTopCandidates(dhSubs);
+              if (dhDubs.length > 0) yield enrichTopCandidates(dhDubs);
+              bestSub = findBestMatch(dhSubs, title, originalTitle, season, metadata);
+              bestDub = findBestMatch(dhDubs, title, originalTitle, season, metadata);
+            }
+          }
         }
       }
       if (!bestSub && !bestDub) {

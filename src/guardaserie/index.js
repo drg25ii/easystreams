@@ -23,6 +23,7 @@ const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 
 const { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require('../extractors');
+require('../fetch_helper.js');
 const { getSeasonEpisodeFromAbsolute, getTmdbFromKitsu } = require('../tmdb_helper.js');
 const { checkQualityFromPlaylist } = require('../quality_helper.js');
 const { formatStream } = require('../formatter.js');
@@ -179,8 +180,7 @@ function getStreams(id, type, season, episode) {
         imdbId = imdbCore;
         tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
         if (!tmdbId) {
-          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID`);
-          return [];
+          console.log(`[Guardaserie] Could not convert ${id} to TMDB ID. Continuing with IMDb ID.`);
         }
       } else if (id.toString().startsWith("kitsu:")) {
           const resolved = yield getTmdbFromKitsu(id);
@@ -214,13 +214,18 @@ function getStreams(id, type, season, episode) {
       
       let showInfo = null;
       try {
-          showInfo = yield getShowInfo(tmdbId, type);
+          if (tmdbId) showInfo = yield getShowInfo(tmdbId, type);
       } catch (e) {
           console.error("[Guardaserie] Error fetching show info:", e);
       }
       
-      if (!showInfo) return [];
-      const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
+      if (!showInfo && !imdbId) return [];
+      let title = "Serie TV";
+      if (showInfo) {
+          title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title || "Serie TV";
+      } else if (imdbId) {
+          title = imdbId;
+      }
       
       let mappedSeason = null;
       let mappedEpisode = null;
@@ -238,171 +243,219 @@ function getStreams(id, type, season, episode) {
            }
       }
 
-      const year = showInfo.first_air_date ? showInfo.first_air_date.split("-")[0] : "";
-      console.log(`[Guardaserie] Searching for: ${title} (${year})`);
-      const params = new URLSearchParams();
-      params.append("do", "search");
-      params.append("subaction", "search");
-      params.append("story", title);
-      const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
-      const searchResponse = yield fetch(searchUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Referer": BASE_URL
-        }
-      });
-      const searchHtml = yield searchResponse.text();
-      const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
-      let match;
-      let showUrl = null;
+      const year = (showInfo && showInfo.first_air_date) ? showInfo.first_air_date.split("-")[0] : "";
       const metaYear = year ? parseInt(year) : null;
-      
-      const candidates = [];
-
-      while ((match = resultRegex.exec(searchHtml)) !== null) {
-        const foundUrl = match[1];
-        const foundTitle = match[2];
-        const foundYearStr = match[3];
-        
-        if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
-            candidates.push({
-                url: foundUrl,
-                title: foundTitle,
-                year: foundYearStr
-            });
-        }
-      }
-
+      let showUrl = null;
       let showHtml = null;
-      // Filter candidates
-      for (const candidate of candidates) {
-          let matchesYear = true;
-          if (metaYear) {
-              const yearMatch = candidate.year.match(/(\d{4})/);
-              if (yearMatch) {
-                  const foundYear = parseInt(yearMatch[1]);
-                  if (Math.abs(foundYear - metaYear) > 2) {
-                      matchesYear = false;
+
+      // 1. Attempt Search by IMDb ID (Preferred)
+      if (imdbId) {
+          console.log(`[Guardaserie] Searching by IMDb ID: ${imdbId}`);
+          try {
+              const params = new URLSearchParams();
+              params.append("do", "search");
+              params.append("subaction", "search");
+              params.append("story", imdbId);
+              const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
+              
+              const searchResponse = yield fetch(searchUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "Referer": BASE_URL
+                }
+              });
+              
+              if (searchResponse.ok) {
+                  const searchHtml = yield searchResponse.text();
+                  const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i;
+                  const match = resultRegex.exec(searchHtml);
+                  
+                  if (match) {
+                      const foundUrl = match[1];
+                      console.log(`[Guardaserie] Found match by IMDb ID: ${foundUrl}`);
+                      
+                      const pageResponse = yield fetch(foundUrl, {
+                          headers: {
+                              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                              "Referer": BASE_URL
+                          }
+                      });
+                      
+                      if (pageResponse.ok) {
+                          showHtml = yield pageResponse.text();
+                          showUrl = foundUrl;
+                      }
                   }
               }
+          } catch (e) {
+              console.error(`[Guardaserie] Error searching by IMDb ID:`, e);
+          }
+      }
+
+      // 2. Fallback to Title Search (Legacy)
+      if (!showUrl) {
+          console.log(`[Guardaserie] Searching by Title: ${title} (${year})`);
+          const params = new URLSearchParams();
+          params.append("do", "search");
+          params.append("subaction", "search");
+          params.append("story", title);
+          const searchUrl = `${BASE_URL}/index.php?${params.toString()}`;
+          const searchResponse = yield fetch(searchUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Referer": BASE_URL
+            }
+          });
+          const searchHtml = yield searchResponse.text();
+          const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">[\s\S]*?<\/div>\s*<div class="mlnh-3 hdn">([^<]*)<\/div>/g;
+          let match;
+          
+          const candidates = [];
+
+          while ((match = resultRegex.exec(searchHtml)) !== null) {
+            const foundUrl = match[1];
+            const foundTitle = match[2];
+            const foundYearStr = match[3];
+            
+            if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
+                candidates.push({
+                    url: foundUrl,
+                    title: foundTitle,
+                    year: foundYearStr
+                });
+            }
           }
 
-          if (matchesYear) {
-              console.log(`[Guardaserie] Verifying candidate: ${candidate.title} (${candidate.year})`);
-              try {
-                  const candidateRes = yield fetch(candidate.url, {
-                    headers: {
-                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                      "Referer": BASE_URL
-                    }
-                  });
-                  if (!candidateRes.ok) continue;
-                  const candidateHtml = yield candidateRes.text();
-                  let verifiedByLinks = false;
-                  let verifiedByVars = false;
-                  let imdbVarVal = null;
-                  try {
-                      const titleVarMatch = candidateHtml.match(/show_title\s*=\s*'([^']+)'/i);
-                      const imdbVarMatch = candidateHtml.match(/show_imdb\s*=\s*'([^']+)'/i);
-                      if (imdbVarMatch) imdbVarVal = imdbVarMatch[1];
-                      if (imdbVarVal && imdbId && imdbVarVal === imdbId) {
-                          console.log(`[Guardaserie] Verified ${candidate.url} via show_imdb variable.`);
-                          verifiedByVars = true;
-                      } else if (titleVarMatch) {
-                          const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
-                          const a = norm(titleVarMatch[1]);
-                          const b = norm(title);
-                          if (a && b && (a.includes(b) || b.includes(a))) {
-                              console.log(`[Guardaserie] Tentatively verified ${candidate.url} via show_title variable.`);
-                              verifiedByVars = true;
-                          }
+          // Filter candidates
+          for (const candidate of candidates) {
+              let matchesYear = true;
+              if (metaYear) {
+                  const yearMatch = candidate.year.match(/(\d{4})/);
+                  if (yearMatch) {
+                      const foundYear = parseInt(yearMatch[1]);
+                      if (Math.abs(foundYear - metaYear) > 2) {
+                          matchesYear = false;
                       }
-                  } catch (e) {}
-                  if (imdbId && imdbVarVal && imdbVarVal !== imdbId) {
-                      console.log(`[Guardaserie] Rejected ${candidate.url} due to show_imdb mismatch (${imdbVarVal} != ${imdbId}).`);
-                      continue;
                   }
-                  if (!verifiedByVars) {
+              }
+
+              if (matchesYear) {
+                  console.log(`[Guardaserie] Verifying candidate: ${candidate.title} (${candidate.year})`);
+                  try {
+                      const candidateRes = yield fetch(candidate.url, {
+                        headers: {
+                          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                          "Referer": BASE_URL
+                        }
+                      });
+                      if (!candidateRes.ok) continue;
+                      const candidateHtml = yield candidateRes.text();
+                      let verifiedByLinks = false;
+                      let verifiedByVars = false;
+                      let imdbVarVal = null;
                       try {
-                          const tmdbLinkMatches = candidateHtml.match(/themoviedb\.org\/(?:tv|movie)\/(\d+)/g);
-                          if (tmdbLinkMatches && tmdbLinkMatches.length > 0 && tmdbId) {
-                              const foundIds = tmdbLinkMatches.map(l => {
-                                  const m = l.match(/\/(\d+)/);
-                                  return m ? m[1] : null;
-                              }).filter(Boolean);
-                              if (foundIds.includes(String(tmdbId))) {
-                                  console.log(`[Guardaserie] Verified ${candidate.url} via TMDB link.`);
-                                  verifiedByLinks = true;
-                              } else {
-                                  console.log(`[Guardaserie] Rejected ${candidate.url} due to TMDB mismatch.`);
-                                  continue;
-                              }
-                          }
-                          if (!verifiedByLinks) {
-                              const mpLinkMatch = candidateHtml.match(/href=["'](https?:\/\/(?:www\.)?movieplayer\.it\/serietv\/[^"']+)["']/i);
-                              if (mpLinkMatch && metaYear) {
-                                  const mpUrl = mpLinkMatch[1];
-                                  const ok = yield verifyMoviePlayer(mpUrl, metaYear);
-                                  if (ok) {
-                                      verifiedByLinks = true;
-                                      console.log(`[Guardaserie] Verified ${candidate.url} via MoviePlayer link.`);
-                                  } else {
-                                      console.log(`[Guardaserie] Rejected ${candidate.url} via MoviePlayer year mismatch.`);
-                                      continue;
-                                  }
-                              }
-                          }
-                          if (!verifiedByLinks && imdbId) {
-                              const imdbLinkMatches = candidateHtml.match(/imdb\.com\/title\/(tt\d{7,8})/g);
-                              if (imdbLinkMatches && imdbLinkMatches.length > 0) {
-                                  const foundImdb = imdbLinkMatches.map(l => {
-                                      const m = l.match(/(tt\d{7,8})/);
-                                      return m ? m[1] : null;
-                                  }).filter(Boolean);
-                                  if (foundImdb.includes(imdbId)) {
-                                      console.log(`[Guardaserie] Verified ${candidate.url} via IMDb link.`);
-                                      verifiedByLinks = true;
-                                  } else {
-                                      console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb link mismatch.`);
-                                      continue;
-                                  }
+                          const titleVarMatch = candidateHtml.match(/show_title\s*=\s*'([^']+)'/i);
+                          const imdbVarMatch = candidateHtml.match(/show_imdb\s*=\s*'([^']+)'/i);
+                          if (imdbVarMatch) imdbVarVal = imdbVarMatch[1];
+                          if (imdbVarVal && imdbId && imdbVarVal === imdbId) {
+                              console.log(`[Guardaserie] Verified ${candidate.url} via show_imdb variable.`);
+                              verifiedByVars = true;
+                          } else if (titleVarMatch) {
+                              const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+                              const a = norm(titleVarMatch[1]);
+                              const b = norm(title);
+                              if (a && b && (a.includes(b) || b.includes(a))) {
+                                  console.log(`[Guardaserie] Tentatively verified ${candidate.url} via show_title variable.`);
+                                  verifiedByVars = true;
                               }
                           }
                       } catch (e) {}
-                  }
-                  if (!verifiedByLinks && !verifiedByVars && imdbId) {
-                      const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
-                      if (imdbMatches && imdbMatches.length > 0) {
-                          const targetId = imdbId;
-                          const hasTarget = imdbMatches.includes(targetId);
-                          const otherIds = imdbMatches.filter(m => m !== targetId);
-                          
-                          if (!hasTarget && otherIds.length > 0) {
-                               // Special case for One Piece alias/dub
-                               if (title.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
-                                    console.log(`[Guardaserie] Accepting "All'arrembaggio" despite IMDb mismatch (known alias).`);
-                               } else {
-                                    console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
-                                    continue;
-                               }
-                          }
-                          if (hasTarget) {
-                               console.log(`[Guardaserie] Verified ${candidate.url} with IMDb match.`);
+                      if (imdbId && imdbVarVal && imdbVarVal !== imdbId) {
+                          console.log(`[Guardaserie] Rejected ${candidate.url} due to show_imdb mismatch (${imdbVarVal} != ${imdbId}).`);
+                          continue;
+                      }
+                      if (!verifiedByVars) {
+                          try {
+                              const tmdbLinkMatches = candidateHtml.match(/themoviedb\.org\/(?:tv|movie)\/(\d+)/g);
+                              if (tmdbLinkMatches && tmdbLinkMatches.length > 0 && tmdbId) {
+                                  const foundIds = tmdbLinkMatches.map(l => {
+                                      const m = l.match(/\/(\d+)/);
+                                      return m ? m[1] : null;
+                                  }).filter(Boolean);
+                                  if (foundIds.includes(String(tmdbId))) {
+                                      console.log(`[Guardaserie] Verified ${candidate.url} via TMDB link.`);
+                                      verifiedByLinks = true;
+                                  } else {
+                                      console.log(`[Guardaserie] Rejected ${candidate.url} due to TMDB mismatch.`);
+                                      continue;
+                                  }
+                              }
+                              if (!verifiedByLinks) {
+                                  const mpLinkMatch = candidateHtml.match(/href=["'](https?:\/\/(?:www\.)?movieplayer\.it\/serietv\/[^"']+)["']/i);
+                                  if (mpLinkMatch && metaYear) {
+                                      const mpUrl = mpLinkMatch[1];
+                                      const ok = yield verifyMoviePlayer(mpUrl, metaYear);
+                                      if (ok) {
+                                          verifiedByLinks = true;
+                                          console.log(`[Guardaserie] Verified ${candidate.url} via MoviePlayer link.`);
+                                      } else {
+                                          console.log(`[Guardaserie] Rejected ${candidate.url} via MoviePlayer year mismatch.`);
+                                          continue;
+                                      }
+                                  }
+                              }
+                              if (!verifiedByLinks && imdbId) {
+                                  const imdbLinkMatches = candidateHtml.match(/imdb\.com\/title\/(tt\d{7,8})/g);
+                                  if (imdbLinkMatches && imdbLinkMatches.length > 0) {
+                                      const foundImdb = imdbLinkMatches.map(l => {
+                                          const m = l.match(/(tt\d{7,8})/);
+                                          return m ? m[1] : null;
+                                      }).filter(Boolean);
+                                      if (foundImdb.includes(imdbId)) {
+                                          console.log(`[Guardaserie] Verified ${candidate.url} via IMDb link.`);
+                                          verifiedByLinks = true;
+                                      } else {
+                                          console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb link mismatch.`);
+                                          continue;
+                                      }
+                                  }
+                              }
+                          } catch (e) {}
+                      }
+                      if (!verifiedByLinks && !verifiedByVars && imdbId) {
+                          const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
+                          if (imdbMatches && imdbMatches.length > 0) {
+                              const targetId = imdbId;
+                              const hasTarget = imdbMatches.includes(targetId);
+                              const otherIds = imdbMatches.filter(m => m !== targetId);
+                              
+                              if (!hasTarget && otherIds.length > 0) {
+                                   // Special case for One Piece alias/dub
+                                   if (title.includes("One Piece") && candidate.title.includes("All'arrembaggio")) {
+                                        console.log(`[Guardaserie] Accepting "All'arrembaggio" despite IMDb mismatch (known alias).`);
+                                   } else {
+                                        console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb mismatch. Found: ${otherIds.join(", ")}`);
+                                        continue;
+                                   }
+                              }
+                              if (hasTarget) {
+                                   console.log(`[Guardaserie] Verified ${candidate.url} with IMDb match.`);
+                              }
                           }
                       }
+                      
+                      if (verifiedByLinks || verifiedByVars) {
+                          showUrl = candidate.url;
+                          showHtml = candidateHtml;
+                          break;
+                      } else {
+                          showUrl = candidate.url;
+                          showHtml = candidateHtml;
+                          break;
+                      }
+                  } catch (e) {
+                      console.error(`[Guardaserie] Error verifying candidate ${candidate.url}:`, e);
                   }
-                  
-                  if (verifiedByLinks || verifiedByVars) {
-                      showUrl = candidate.url;
-                      showHtml = candidateHtml;
-                      break;
-                  } else {
-                      showUrl = candidate.url;
-                      showHtml = candidateHtml;
-                      break;
-                  }
-              } catch (e) {
-                  console.error(`[Guardaserie] Error verifying candidate ${candidate.url}:`, e);
               }
           }
       }
@@ -481,78 +534,79 @@ function getStreams(id, type, season, episode) {
 
           let streamUrl = null;
           let playerName = "Unknown";
+
           if (link.includes("dropload")) {
             const extracted = yield extractDropLoad(link);
             if (extracted && extracted.url) {
-            let quality = "HD";
-            if (extracted.url.includes('.m3u8')) {
-                const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
-                if (detected) quality = detected;
-            } else {
-                const lowerUrl = extracted.url.toLowerCase();
-                if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                else if (lowerUrl.includes("360")) quality = "360p";
-            }
-            
-            const normalizedQuality = getQualityFromName(quality);
+              let quality = "HD";
+              if (extracted.url.includes('.m3u8')) {
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                  if (detected) quality = detected;
+              } else {
+                  const lowerUrl = extracted.url.toLowerCase();
+                  if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                  else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                  else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                  else if (lowerUrl.includes("360")) quality = "360p";
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            return {
-              url: extracted.url,
-              headers: extracted.headers,
-              name: `Guardaserie - DropLoad`,
-              title: displayName,
-              quality: normalizedQuality,
-              type: "direct"
-            };
-          }
-        } else if (link.includes("supervideo")) {
-          const streamUrl = yield extractSuperVideo(link);
-          playerName = "SuperVideo";
-          if (streamUrl) {
-            let quality = "HD";
-            if (streamUrl.includes('.m3u8')) {
-                const detected = yield checkQualityFromPlaylist(streamUrl);
-                if (detected) quality = detected;
-            } else {
-                const lowerUrl = streamUrl.toLowerCase();
-                if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                else if (lowerUrl.includes("360")) quality = "360p";
+              return {
+                url: extracted.url,
+                headers: extracted.headers,
+                name: `Guardaserie - DropLoad`,
+                title: displayName,
+                quality: normalizedQuality,
+                type: "direct"
+              };
             }
-            
-            const normalizedQuality = getQualityFromName(quality);
+          } else if (link.includes("supervideo")) {
+            const streamUrl = yield extractSuperVideo(link);
+            playerName = "SuperVideo";
+            if (streamUrl) {
+              let quality = "HD";
+              if (streamUrl.includes('.m3u8')) {
+                  const detected = yield checkQualityFromPlaylist(streamUrl);
+                  if (detected) quality = detected;
+              } else {
+                  const lowerUrl = streamUrl.toLowerCase();
+                  if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                  else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                  else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                  else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                  else if (lowerUrl.includes("360")) quality = "360p";
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            return {
-              url: streamUrl,
-              name: `Guardaserie - ${playerName}`,
-              title: displayName,
-              quality: normalizedQuality,
-              type: "direct"
-            };
-          }
-        } else if (link.includes("mixdrop")) {
-          const extracted = yield extractMixDrop(link);
-          if (extracted && extracted.url) {
-            let quality = "HD";
-            if (extracted.url.includes('.m3u8')) {
-                const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
-                if (detected) quality = detected;
-            } else {
-                const lowerUrl = extracted.url.toLowerCase();
-                if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
-                else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
-                else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
-                else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
-                else if (lowerUrl.includes("360")) quality = "360p";
+              return {
+                url: streamUrl,
+                name: `Guardaserie - ${playerName}`,
+                title: displayName,
+                quality: normalizedQuality,
+                type: "direct"
+              };
             }
-            
-            const normalizedQuality = getQualityFromName(quality);
+          } else if (link.includes("mixdrop")) {
+            const extracted = yield extractMixDrop(link);
+            if (extracted && extracted.url) {
+              let quality = "HD";
+              if (extracted.url.includes('.m3u8')) {
+                  const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+                  if (detected) quality = detected;
+              } else {
+                  const lowerUrl = extracted.url.toLowerCase();
+                  if (lowerUrl.includes("4k") || lowerUrl.includes("2160")) quality = "4K";
+                  else if (lowerUrl.includes("1080") || lowerUrl.includes("fhd")) quality = "1080p";
+                  else if (lowerUrl.includes("720") || lowerUrl.includes("hd")) quality = "720p";
+                  else if (lowerUrl.includes("480") || lowerUrl.includes("sd")) quality = "480p";
+                  else if (lowerUrl.includes("360")) quality = "360p";
+              }
+              
+              const normalizedQuality = getQualityFromName(quality);
 
-            return {
+              return {
               url: extracted.url,
               headers: extracted.headers,
               name: `Guardaserie - MixDrop`,

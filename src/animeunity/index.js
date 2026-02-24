@@ -1,4 +1,5 @@
 const { extractVixCloud } = require('../extractors');
+require('../fetch_helper.js');
 const { getTmdbFromKitsu, isAnime } = require('../tmdb_helper.js');
 const { formatStream } = require('../formatter.js');
 const { checkQualityFromPlaylist } = require('../quality_helper.js');

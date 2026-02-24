@@ -13,6 +13,41 @@ if (!global.fetch) {
     global.Response = fetch.Response;
 }
 
+// Global timeout configuration
+const FETCH_TIMEOUT = 15000; // 15 seconds for HTTP requests
+const PROVIDER_TIMEOUT = 25000; // 25 seconds for provider execution
+
+// Wrap global fetch to enforce timeout
+const originalFetch = global.fetch;
+global.fetch = async function(url, options = {}) {
+    // If a signal is already provided, respect it
+    if (options.signal) {
+        return originalFetch(url, options);
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+        controller.abort();
+    }, options.timeout || FETCH_TIMEOUT);
+
+    try {
+        const response = await originalFetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        return response;
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            // Re-throw as a timeout error for clarity if aborted by our timeout
+            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+    }
+};
+
+
 // Import providers
 const providers = {
     animeunity: require('./src/animeunity/index.js'),
@@ -25,7 +60,7 @@ const providers = {
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.0.0',
+    version: '1.0.1',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
@@ -83,8 +118,27 @@ builder.defineStreamHandler(async ({ type, id }) => {
             if (typeof provider.getStreams !== 'function') return [];
             
             console.log(`[${name}] Searching...`);
-            const streams = await provider.getStreams(imdbId, providerType, season, episode);
-            console.log(`[${name}] Found ${streams.length} streams`);
+
+            const timeoutPromise = new Promise((resolve) => {
+                setTimeout(() => {
+                    console.warn(`[${name}] Timed out after ${PROVIDER_TIMEOUT}ms`);
+                    resolve([]); // Resolve with empty array on timeout
+                }, PROVIDER_TIMEOUT);
+            });
+
+            const providerPromise = (async () => {
+                try {
+                    const streams = await provider.getStreams(imdbId, providerType, season, episode);
+                    console.log(`[${name}] Found ${streams.length} streams`);
+                    return streams;
+                } catch (e) {
+                    console.error(`[${name}] Execution Error:`, e.message);
+                    return [];
+                }
+            })();
+
+            // Race between provider execution and timeout
+            const streams = await Promise.race([providerPromise, timeoutPromise]);
             
             // Streams are already formatted by the providers using formatStream (shared logic)
             // Just filter out nulls or invalid streams if any remain
