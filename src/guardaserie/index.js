@@ -112,6 +112,50 @@ function getTmdbIdFromImdb(imdbId, type) {
     }
   });
 }
+
+function verifyMoviePlayer(url, targetYear) {
+  return __async(this, null, function* () {
+    try {
+      console.log(`[Guardaserie] Verifying via MoviePlayer: ${url}`);
+      const response = yield fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT
+        }
+      });
+      if (!response.ok) return false;
+      const html = yield response.text();
+      const yearMatch1 = html.match(/trasmessa dal (\d{4})/i);
+      if (yearMatch1) {
+        const found = parseInt(yearMatch1[1]);
+        if (Math.abs(found - targetYear) <= 1) {
+          console.log(`[Guardaserie] MoviePlayer verified year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const yearMatch2 = html.match(/Prima messa in onda originale.*?(\d{4})/i);
+      if (yearMatch2) {
+        const found = parseInt(yearMatch2[1]);
+        if (Math.abs(found - targetYear) <= 1) {
+          console.log(`[Guardaserie] MoviePlayer verified year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      const titleMatch = html.match(/<title>.*\(.*(\d{4}).*\).*<\/title>/is);
+      if (titleMatch) {
+        const found = parseInt(titleMatch[1]);
+        if (Math.abs(found - targetYear) <= 2) {
+          console.log(`[Guardaserie] MoviePlayer verified title year ${found} (Target: ${targetYear})`);
+          return true;
+        }
+      }
+      console.log(`[Guardaserie] MoviePlayer verification failed. Target Year: ${targetYear}`);
+      return false;
+    } catch (e) {
+      console.error("[Guardaserie] MoviePlayer error:", e);
+      return false;
+    }
+  });
+}
 function getStreams(id, type, season, episode) {
   if (['movie'].includes(String(type).toLowerCase())) return [];
   return __async(this, null, function* () {
@@ -243,8 +287,79 @@ function getStreams(id, type, season, episode) {
                   });
                   if (!candidateRes.ok) continue;
                   const candidateHtml = yield candidateRes.text();
-                  
-                  if (imdbId) {
+                  let verifiedByLinks = false;
+                  let verifiedByVars = false;
+                  let imdbVarVal = null;
+                  try {
+                      const titleVarMatch = candidateHtml.match(/show_title\s*=\s*'([^']+)'/i);
+                      const imdbVarMatch = candidateHtml.match(/show_imdb\s*=\s*'([^']+)'/i);
+                      if (imdbVarMatch) imdbVarVal = imdbVarMatch[1];
+                      if (imdbVarVal && imdbId && imdbVarVal === imdbId) {
+                          console.log(`[Guardaserie] Verified ${candidate.url} via show_imdb variable.`);
+                          verifiedByVars = true;
+                      } else if (titleVarMatch) {
+                          const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, "");
+                          const a = norm(titleVarMatch[1]);
+                          const b = norm(title);
+                          if (a && b && (a.includes(b) || b.includes(a))) {
+                              console.log(`[Guardaserie] Tentatively verified ${candidate.url} via show_title variable.`);
+                              verifiedByVars = true;
+                          }
+                      }
+                  } catch (e) {}
+                  if (imdbId && imdbVarVal && imdbVarVal !== imdbId) {
+                      console.log(`[Guardaserie] Rejected ${candidate.url} due to show_imdb mismatch (${imdbVarVal} != ${imdbId}).`);
+                      continue;
+                  }
+                  if (!verifiedByVars) {
+                      try {
+                          const tmdbLinkMatches = candidateHtml.match(/themoviedb\.org\/(?:tv|movie)\/(\d+)/g);
+                          if (tmdbLinkMatches && tmdbLinkMatches.length > 0 && tmdbId) {
+                              const foundIds = tmdbLinkMatches.map(l => {
+                                  const m = l.match(/\/(\d+)/);
+                                  return m ? m[1] : null;
+                              }).filter(Boolean);
+                              if (foundIds.includes(String(tmdbId))) {
+                                  console.log(`[Guardaserie] Verified ${candidate.url} via TMDB link.`);
+                                  verifiedByLinks = true;
+                              } else {
+                                  console.log(`[Guardaserie] Rejected ${candidate.url} due to TMDB mismatch.`);
+                                  continue;
+                              }
+                          }
+                          if (!verifiedByLinks) {
+                              const mpLinkMatch = candidateHtml.match(/href=["'](https?:\/\/(?:www\.)?movieplayer\.it\/serietv\/[^"']+)["']/i);
+                              if (mpLinkMatch && metaYear) {
+                                  const mpUrl = mpLinkMatch[1];
+                                  const ok = yield verifyMoviePlayer(mpUrl, metaYear);
+                                  if (ok) {
+                                      verifiedByLinks = true;
+                                      console.log(`[Guardaserie] Verified ${candidate.url} via MoviePlayer link.`);
+                                  } else {
+                                      console.log(`[Guardaserie] Rejected ${candidate.url} via MoviePlayer year mismatch.`);
+                                      continue;
+                                  }
+                              }
+                          }
+                          if (!verifiedByLinks && imdbId) {
+                              const imdbLinkMatches = candidateHtml.match(/imdb\.com\/title\/(tt\d{7,8})/g);
+                              if (imdbLinkMatches && imdbLinkMatches.length > 0) {
+                                  const foundImdb = imdbLinkMatches.map(l => {
+                                      const m = l.match(/(tt\d{7,8})/);
+                                      return m ? m[1] : null;
+                                  }).filter(Boolean);
+                                  if (foundImdb.includes(imdbId)) {
+                                      console.log(`[Guardaserie] Verified ${candidate.url} via IMDb link.`);
+                                      verifiedByLinks = true;
+                                  } else {
+                                      console.log(`[Guardaserie] Rejected ${candidate.url} due to IMDb link mismatch.`);
+                                      continue;
+                                  }
+                              }
+                          }
+                      } catch (e) {}
+                  }
+                  if (!verifiedByLinks && !verifiedByVars && imdbId) {
                       const imdbMatches = candidateHtml.match(/tt\d{7,8}/g);
                       if (imdbMatches && imdbMatches.length > 0) {
                           const targetId = imdbId;
@@ -266,9 +381,15 @@ function getStreams(id, type, season, episode) {
                       }
                   }
                   
-                  showUrl = candidate.url;
-                  showHtml = candidateHtml;
-                  break; 
+                  if (verifiedByLinks || verifiedByVars) {
+                      showUrl = candidate.url;
+                      showHtml = candidateHtml;
+                      break;
+                  } else {
+                      showUrl = candidate.url;
+                      showHtml = candidateHtml;
+                      break;
+                  }
               } catch (e) {
                   console.error(`[Guardaserie] Error verifying candidate ${candidate.url}:`, e);
               }
