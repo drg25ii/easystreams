@@ -1,10 +1,22 @@
 
-const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
-const express = require('express');
-const app = express();
-const path = require('path');
-
-// Polyfill fetch for older Node versions if needed
+// Polyfill fetch and related Web APIs for Node.js environments (Must be at the top)
+if (typeof global.Blob === 'undefined') {
+    global.Blob = require('node:buffer').Blob;
+}
+if (typeof global.File === 'undefined') {
+    try {
+        const { File } = require('node:buffer');
+        if (File) global.File = File;
+    } catch (e) {
+        global.File = class File extends global.Blob {
+            constructor(parts, filename, options = {}) {
+                super(parts, options);
+                this.name = filename;
+                this.lastModified = options.lastModified || Date.now();
+            }
+        };
+    }
+}
 if (!global.fetch) {
     const fetch = require('node-fetch');
     global.fetch = fetch;
@@ -13,13 +25,18 @@ if (!global.fetch) {
     global.Response = fetch.Response;
 }
 
+const { addonBuilder, serveHTTP, getRouter } = require('stremio-addon-sdk');
+const express = require('express');
+const app = express();
+const path = require('path');
+
 // Global timeout configuration
 const FETCH_TIMEOUT = 15000; // 15 seconds for HTTP requests
 const PROVIDER_TIMEOUT = 25000; // 25 seconds for provider execution
 
 // Wrap global fetch to enforce timeout
 const originalFetch = global.fetch;
-global.fetch = async function(url, options = {}) {
+global.fetch = async function (url, options = {}) {
     // If a signal is already provided, respect it
     if (options.signal) {
         return originalFetch(url, options);
@@ -54,12 +71,13 @@ const providers = {
     animeworld: require('./src/animeworld/index.js'),
     guardahd: require('./src/guardahd/index.js'),
     guardaserie: require('./src/guardaserie/index.js'),
+    guardoserie: require('./src/guardoserie/index.js'),
     streamingcommunity: require('./providers/streamingcommunity.js')
 };
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.0.2',
+    version: '1.0.55',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
@@ -70,7 +88,7 @@ const builder = new addonBuilder({
 
 builder.defineStreamHandler(async ({ type, id }) => {
     console.log(`[Stremio] Request: ${type} ${id}`);
-    
+
     let imdbId = id;
     let season = 1;
     let episode = 1;
@@ -115,7 +133,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const promises = Object.entries(providers).map(async ([name, provider]) => {
         try {
             if (typeof provider.getStreams !== 'function') return [];
-            
+
             console.log(`[${name}] Searching...`);
 
             let timeoutId;
@@ -141,7 +159,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
             // Race between provider execution and timeout
             const streams = await Promise.race([providerPromise, timeoutPromise]);
-            
+
             // Streams are already formatted by the providers using formatStream (shared logic)
             // Just filter out nulls or invalid streams if any remain
             // Filter MixDrop for Stremio only
@@ -175,7 +193,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     // Sort streams? Maybe by quality or provider preference?
     // For now, just return them all.
-    
+
     // Filter out streams without URL
     const validStreams = streams.filter(s => s.url);
 
@@ -184,28 +202,28 @@ builder.defineStreamHandler(async ({ type, id }) => {
         // 1. StreamingCommunity Priority
         const providerA = a.behaviorHints?.bingeGroup || '';
         const providerB = b.behaviorHints?.bingeGroup || '';
-        
+
         const isA_SC = providerA === 'streamingcommunity';
         const isB_SC = providerB === 'streamingcommunity';
-        
+
         if (isA_SC && !isB_SC) return -1;
         if (!isA_SC && isB_SC) return 1;
-        
+
         // 2. Language Priority (ITA > SUB ITA > Others)
         const getLangScore = (stream) => {
-             const lang = stream.language || '';
-             if (lang === '🇮🇹') return 2;
-             if (lang === '🇯🇵') return 1;
-             return 0;
+            const lang = stream.language || '';
+            if (lang === '🇮🇹') return 2;
+            if (lang === '🇯🇵') return 1;
+            return 0;
         };
-        
+
         const langScoreA = getLangScore(a);
         const langScoreB = getLangScore(b);
-        
+
         if (langScoreA !== langScoreB) {
             return langScoreB - langScoreA; // Descending (2 > 1 > 0)
         }
-        
+
         // 3. Quality Priority
         const qualityOrder = {
             '🔥4K UHD': 10,
@@ -214,17 +232,17 @@ builder.defineStreamHandler(async ({ type, id }) => {
             '💿 HD': 7,
             '💩 Low Quality': 1
         };
-        
+
         const getScore = (str) => {
-             for (const [k, v] of Object.entries(qualityOrder)) {
-                 if (str.includes(k)) return v;
-             }
-             return 0;
+            for (const [k, v] of Object.entries(qualityOrder)) {
+                if (str.includes(k)) return v;
+            }
+            return 0;
         };
-        
+
         const scoreA = getScore(a.name);
         const scoreB = getScore(b.name);
-        
+
         return scoreB - scoreA; // Descending
     });
 

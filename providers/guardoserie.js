@@ -89,7 +89,7 @@ var require_common = __commonJS({
 var require_mixdrop = __commonJS({
   "src/extractors/mixdrop.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
-    function extractMixDrop2(url, refererBase = "https://m1xdrop.net/") {
+    function extractMixDrop(url, refererBase = "https://m1xdrop.net/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
@@ -130,7 +130,7 @@ var require_mixdrop = __commonJS({
         }
       });
     }
-    module2.exports = { extractMixDrop: extractMixDrop2 };
+    module2.exports = { extractMixDrop };
   }
 });
 
@@ -188,7 +188,7 @@ var require_dropload = __commonJS({
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
-    function extractSuperVideo2(url, refererBase = null) {
+    function extractSuperVideo(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
@@ -229,7 +229,7 @@ var require_supervideo = __commonJS({
         }
       });
     }
-    module2.exports = { extractSuperVideo: extractSuperVideo2 };
+    module2.exports = { extractSuperVideo };
   }
 });
 
@@ -270,7 +270,7 @@ var require_streamtape = __commonJS({
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
     var { USER_AGENT: USER_AGENT2 } = require_common();
-    function extractUqload(url, refererBase = "https://uqload.io/") {
+    function extractUqload2(url, refererBase = "https://uqload.io/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
@@ -302,7 +302,7 @@ var require_uqload = __commonJS({
         }
       });
     }
-    module2.exports = { extractUqload };
+    module2.exports = { extractUqload: extractUqload2 };
   }
 });
 
@@ -422,7 +422,7 @@ var require_quality_helper = __commonJS({
       if (/RESOLUTION=\d+x480/i.test(text) || /RESOLUTION=480/i.test(text)) return "480p";
       return null;
     }
-    function getQualityFromUrl2(url) {
+    function getQualityFromUrl(url) {
       if (!url) return null;
       const urlPath = url.split("?")[0].toLowerCase();
       if (urlPath.includes("4k") || urlPath.includes("2160")) return "4K";
@@ -433,7 +433,7 @@ var require_quality_helper = __commonJS({
       if (urlPath.includes("360")) return "360p";
       return null;
     }
-    module2.exports = { checkQualityFromPlaylist: checkQualityFromPlaylist2, getQualityFromUrl: getQualityFromUrl2, checkQualityFromText };
+    module2.exports = { checkQualityFromPlaylist: checkQualityFromPlaylist2, getQualityFromUrl, checkQualityFromText };
   }
 });
 
@@ -512,7 +512,7 @@ var require_loadm = __commonJS({
   "src/extractors/loadm.js"(exports2, module2) {
     var CryptoJS = require("crypto-js");
     var { USER_AGENT: USER_AGENT2 } = require_common();
-    function extractLoadm(playerUrl, referer = "guardoserie.horse") {
+    function extractLoadm2(playerUrl, referer = "guardoserie.horse") {
       return __async(this, null, function* () {
         try {
           if (!playerUrl.includes("#")) return [];
@@ -600,82 +600,97 @@ var require_loadm = __commonJS({
         }
       });
     }
-    module2.exports = { extractLoadm };
+    module2.exports = { extractLoadm: extractLoadm2 };
   }
 });
 
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
-    var { extractMixDrop: extractMixDrop2 } = require_mixdrop();
+    var { extractMixDrop } = require_mixdrop();
     var { extractDropLoad: extractDropLoad2 } = require_dropload();
-    var { extractSuperVideo: extractSuperVideo2 } = require_supervideo();
+    var { extractSuperVideo } = require_supervideo();
     var { extractStreamTape } = require_streamtape();
-    var { extractUqload } = require_uqload();
+    var { extractUqload: extractUqload2 } = require_uqload();
     var { extractUpstream } = require_upstream();
     var { extractVidoza } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
-    var { extractLoadm } = require_loadm();
+    var { extractLoadm: extractLoadm2 } = require_loadm();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
-      extractMixDrop: extractMixDrop2,
+      extractMixDrop,
       extractDropLoad: extractDropLoad2,
-      extractSuperVideo: extractSuperVideo2,
+      extractSuperVideo,
       extractStreamTape,
-      extractUqload,
+      extractUqload: extractUqload2,
       extractUpstream,
       extractVidoza,
       extractVixCloud,
-      extractLoadm,
+      extractLoadm: extractLoadm2,
       USER_AGENT: USER_AGENT2,
       unPack
     };
   }
 });
 
-// src/fetch_helper.js
-var require_fetch_helper = __commonJS({
-  "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 3e4;
-    var originalFetch = global.fetch;
-    if (!originalFetch) {
-      try {
-        const nodeFetch = require("node-fetch");
-        originalFetch = nodeFetch;
-        global.fetch = nodeFetch;
-        global.Headers = nodeFetch.Headers;
-        global.Request = nodeFetch.Request;
-        global.Response = nodeFetch.Response;
-      } catch (e) {
-        console.warn("No fetch implementation found and node-fetch is not available!");
+// src/formatter.js
+var require_formatter = __commonJS({
+  "src/formatter.js"(exports2, module2) {
+    function formatStream2(stream, providerName) {
+      let quality = stream.quality || "";
+      if (quality === "2160p") quality = "\u{1F525}4K UHD";
+      else if (quality === "1440p") quality = "\u2728 QHD";
+      else if (quality === "1080p") quality = "\u{1F680} FHD";
+      else if (quality === "720p") quality = "\u{1F4BF} HD";
+      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
+      else if (!quality || quality.toLowerCase() === "auto") quality = "Unknown";
+      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
+      let language = stream.language;
+      if (!language) {
+        if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+        else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
+        else language = "\u{1F1EE}\u{1F1F9}";
       }
-    }
-    var fetchWithTimeout = function(_0) {
-      return __async(this, arguments, function* (url, options = {}) {
-        if (options.signal) {
-          return originalFetch(url, options);
-        }
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => {
-          controller.abort();
-        }, options.timeout || FETCH_TIMEOUT);
-        try {
-          const response = yield originalFetch(url, __spreadProps(__spreadValues({}, options), {
-            signal: controller.signal
-          }));
-          return response;
-        } catch (error) {
-          if (error.name === "AbortError") {
-            throw new Error(`Request to ${url} timed out after ${options.timeout || FETCH_TIMEOUT}ms`);
-          }
-          throw error;
-        } finally {
-          clearTimeout(timeoutId);
-        }
+      let details = [];
+      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
+      const desc = details.join(" | ");
+      let pName = stream.name || stream.server || providerName;
+      if (pName) {
+        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
+      }
+      if (pName === providerName) {
+        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
+      }
+      if (pName) {
+        pName = `\u{1F4E1} ${pName}`;
+      }
+      const finalName = quality || pName;
+      let titleText = `${title}
+${pName}`;
+      if (desc) titleText += ` | ${desc}`;
+      if (language) titleText += `
+\u{1F5E3}\uFE0F ${language}`;
+      const behaviorHints = stream.behaviorHints || {};
+      if (stream.headers) {
+        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
+        behaviorHints.proxyHeaders.request = stream.headers;
+        behaviorHints.headers = stream.headers;
+        behaviorHints.notWebReady = true;
+      }
+      return __spreadProps(__spreadValues({}, stream), {
+        // Keep original properties
+        name: finalName,
+        title: titleText,
+        // Ensure language is set for Stremio/Nuvio sorting
+        language,
+        // Mark as formatted
+        _nuvio_formatted: true,
+        behaviorHints,
+        // Explicitly ensure root headers are preserved for Nuvio
+        headers: stream.headers
       });
-    };
-    global.fetch = fetchWithTimeout;
-    module2.exports = { fetchWithTimeout };
+    }
+    module2.exports = { formatStream: formatStream2 };
   }
 });
 
@@ -844,96 +859,15 @@ var require_tmdb_helper = __commonJS({
   }
 });
 
-// src/formatter.js
-var require_formatter = __commonJS({
-  "src/formatter.js"(exports2, module2) {
-    function formatStream2(stream, providerName) {
-      let quality = stream.quality || "";
-      if (quality === "2160p") quality = "\u{1F525}4K UHD";
-      else if (quality === "1440p") quality = "\u2728 QHD";
-      else if (quality === "1080p") quality = "\u{1F680} FHD";
-      else if (quality === "720p") quality = "\u{1F4BF} HD";
-      else if (quality === "576p" || quality === "480p" || quality === "360p" || quality === "240p") quality = "\u{1F4A9} Low Quality";
-      else if (!quality || quality.toLowerCase() === "auto") quality = "Unknown";
-      let title = `\u{1F4C1} ${stream.title || "Stream"}`;
-      let language = stream.language;
-      if (!language) {
-        if (stream.name && (stream.name.includes("SUB ITA") || stream.name.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else if (stream.title && (stream.title.includes("SUB ITA") || stream.title.includes("SUB"))) language = "\u{1F1EF}\u{1F1F5} \u{1F1EE}\u{1F1F9}";
-        else language = "\u{1F1EE}\u{1F1F9}";
-      }
-      let details = [];
-      if (stream.size) details.push(`\u{1F4E6} ${stream.size}`);
-      const desc = details.join(" | ");
-      let pName = stream.name || stream.server || providerName;
-      if (pName) {
-        pName = pName.replace(/\s*\[?\(?\s*SUB\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*ITA\s*\)?\]?/i, "").replace(/\s*\[?\(?\s*SUB\s*\)?\]?/i, "").replace(/\(\s*\)/g, "").replace(/\[\s*\]/g, "").trim();
-      }
-      if (pName === providerName) {
-        pName = pName.charAt(0).toUpperCase() + pName.slice(1);
-      }
-      if (pName) {
-        pName = `\u{1F4E1} ${pName}`;
-      }
-      const finalName = quality || pName;
-      let titleText = `${title}
-${pName}`;
-      if (desc) titleText += ` | ${desc}`;
-      if (language) titleText += `
-\u{1F5E3}\uFE0F ${language}`;
-      const behaviorHints = stream.behaviorHints || {};
-      if (stream.headers) {
-        behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
-        behaviorHints.proxyHeaders.request = stream.headers;
-        behaviorHints.headers = stream.headers;
-        behaviorHints.notWebReady = true;
-      }
-      return __spreadProps(__spreadValues({}, stream), {
-        // Keep original properties
-        name: finalName,
-        title: titleText,
-        // Ensure language is set for Stremio/Nuvio sorting
-        language,
-        // Mark as formatted
-        _nuvio_formatted: true,
-        behaviorHints,
-        // Explicitly ensure root headers are preserved for Nuvio
-        headers: stream.headers
-      });
-    }
-    module2.exports = { formatStream: formatStream2 };
-  }
-});
-
-// src/guardahd/index.js
-var __async2 = (__this, __arguments, generator) => {
-  return new Promise((resolve, reject) => {
-    var fulfilled = (value) => {
-      try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    var rejected = (value) => {
-      try {
-        step(generator.throw(value));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
-    step((generator = generator.apply(__this, __arguments)).next());
-  });
-};
-var BASE_URL = "https://guardahd.stream";
-var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
-var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
-var { extractMixDrop, extractDropLoad, extractSuperVideo } = require_extractors();
-require_fetch_helper();
-var { getTmdbFromKitsu } = require_tmdb_helper();
+// src/guardoserie/index.js
+var cheerio = require("cheerio");
+var { USER_AGENT } = require_common();
+var { extractLoadm, extractUqload, extractDropLoad } = require_extractors();
 var { formatStream } = require_formatter();
-var { checkQualityFromPlaylist, getQualityFromUrl } = require_quality_helper();
+var { getTmdbFromKitsu } = require_tmdb_helper();
+var { checkQualityFromPlaylist } = require_quality_helper();
+var BASE_URL = "https://guardoserie.horse";
+var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 function getQualityFromName(qualityStr) {
   if (!qualityStr) return "Unknown";
   const quality = qualityStr.toUpperCase();
@@ -958,220 +892,232 @@ function getQualityFromName(qualityStr) {
   }
   return "Unknown";
 }
-function getImdbId(tmdbId, type) {
-  return __async2(this, null, function* () {
+function getShowInfo(tmdbId, type) {
+  return __async(this, null, function* () {
     try {
-      const normalizedType = String(type).toLowerCase();
-      const endpoint = normalizedType === "movie" ? "movie" : "tv";
-      const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}`;
+      const endpoint = type === "movie" ? "movie" : "tv";
+      const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`;
       const response = yield fetch(url);
       if (!response.ok) return null;
-      const data = yield response.json();
-      if (data.imdb_id) {
-        console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${data.imdb_id}`);
-        return data.imdb_id;
-      }
-      const externalUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
-      const extResponse = yield fetch(externalUrl);
-      if (extResponse.ok) {
-        const extData = yield extResponse.json();
-        if (extData.imdb_id) {
-          console.log(`[GuardaHD] Converted TMDB ${tmdbId} to IMDb ${extData.imdb_id} (via external_ids)`);
-          return extData.imdb_id;
-        }
-      }
-      console.log(`[GuardaHD] Failed to convert TMDB ${tmdbId} to IMDb`);
-      return null;
+      return yield response.json();
     } catch (e) {
-      console.error("[GuardaHD] Conversion error:", e);
-      return null;
-    }
-  });
-}
-function getMetadata(id, type) {
-  return __async2(this, null, function* () {
-    try {
-      const normalizedType = String(type).toLowerCase();
-      let queryId = id;
-      if (String(id).startsWith("kitsu:")) {
-        const resolved = yield getTmdbFromKitsu(id);
-        if (resolved && resolved.tmdbId) {
-          queryId = resolved.tmdbId;
-          console.log(`[GuardaHD] Resolved Kitsu ID ${id} to ID ${queryId}`);
-        } else {
-          console.log(`[GuardaHD] Could not convert ${id} to usable ID`);
-          return null;
-        }
-      }
-      let url;
-      if (String(queryId).startsWith("tt")) {
-        url = `https://api.themoviedb.org/3/find/${queryId}?api_key=${TMDB_API_KEY}&external_source=imdb_id&language=it-IT`;
-      } else {
-        const endpoint = normalizedType === "movie" ? "movie" : "tv";
-        url = `https://api.themoviedb.org/3/${endpoint}/${queryId}?api_key=${TMDB_API_KEY}&language=it-IT`;
-      }
-      const response = yield fetch(url);
-      if (!response.ok) return null;
-      const data = yield response.json();
-      if (String(queryId).startsWith("tt")) {
-        const results = normalizedType === "movie" ? data.movie_results : data.tv_results;
-        if (results && results.length > 0) return results[0];
-      } else {
-        return data;
-      }
-      return null;
-    } catch (e) {
-      console.error("[GuardaHD] Metadata error:", e);
+      console.error("[Guardoserie] TMDB error:", e);
       return null;
     }
   });
 }
 function getStreams(id, type, season, episode) {
-  if (["series", "tv"].includes(String(type).toLowerCase())) return [];
-  return __async2(this, null, function* () {
-    let cleanId = id.toString();
-    if (cleanId.startsWith("kitsu:")) {
-      const resolved = yield getTmdbFromKitsu(cleanId);
-      if (resolved && resolved.tmdbId) {
-        console.log(`[GuardaHD] Resolved Kitsu ID ${cleanId} to ID ${resolved.tmdbId}`);
-        cleanId = String(resolved.tmdbId);
-        if (resolved.season) {
-          console.log(`[GuardaHD] Kitsu mapping indicates Season ${resolved.season}. Overriding requested Season ${season}`);
-          season = resolved.season;
+  return __async(this, null, function* () {
+    var _a, _b;
+    try {
+      let tmdbId = id;
+      if (id.toString().startsWith("tt")) {
+        const url = `https://api.themoviedb.org/3/find/${id}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
+        const response = yield fetch(url);
+        if (response.ok) {
+          const data = yield response.json();
+          if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) tmdbId = data.movie_results[0].id;
+          else if ((type === "series" || type === "tv") && ((_b = data.tv_results) == null ? void 0 : _b.length) > 0) tmdbId = data.tv_results[0].id;
         }
-      } else {
-        console.log(`[GuardaHD] Could not convert ${cleanId} to usable ID`);
+      } else if (id.toString().startsWith("kitsu:")) {
+        const resolved = yield getTmdbFromKitsu(id);
+        if (resolved && resolved.tmdbId) {
+          tmdbId = resolved.tmdbId;
+          if (resolved.season) season = resolved.season;
+        }
+      }
+      const showInfo = yield getShowInfo(tmdbId, type === "movie" ? "movie" : "tv");
+      if (!showInfo) return [];
+      const title = showInfo.name || showInfo.original_name || showInfo.title || showInfo.original_title;
+      const originalTitle = showInfo.original_title || showInfo.original_name;
+      const year = (showInfo.first_air_date || showInfo.release_date || "").split("-")[0];
+      console.log(`[Guardoserie] Searching for: ${title} / ${originalTitle} (${year})`);
+      const searchProvider = (query) => __async(null, null, function* () {
+        const searchUrl = `${BASE_URL}/wp-admin/admin-ajax.php`;
+        const params = new URLSearchParams({
+          s: query,
+          action: "searchwp_live_search",
+          swpengine: "default",
+          swpquery: query
+        });
+        const response = yield fetch(searchUrl, {
+          method: "POST",
+          headers: {
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Origin": BASE_URL,
+            "Referer": `${BASE_URL}/`
+          },
+          body: params.toString()
+        });
+        if (!response.ok) return [];
+        const searchHtml = yield response.text();
+        const $ = cheerio.load(searchHtml);
+        const results = [];
+        $("a.ss-title").each((i, el) => {
+          results.push({
+            title: $(el).text().trim(),
+            url: $(el).attr("href")
+          });
+        });
+        return results;
+      });
+      let allResults = [];
+      const queries = [title, originalTitle].filter((q) => q && q.length > 2);
+      for (const q of queries) {
+        const res = yield searchProvider(q);
+        allResults.push(...res);
+      }
+      allResults = Array.from(new Map(allResults.map((item) => [item.url, item])).values());
+      let targetUrl = null;
+      for (const result of allResults) {
+        const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "").replace("iltronodispade", "gameofthrones");
+        const nTitle = norm(title);
+        const nOrig = norm(originalTitle || "");
+        const nResult = norm(result.title);
+        if (nResult === nTitle || nResult === nOrig || nResult.includes(nTitle) || nOrig && nResult.includes(nOrig)) {
+          try {
+            const pageRes = yield fetch(result.url, { headers: { "User-Agent": USER_AGENT } });
+            if (!pageRes.ok) continue;
+            const pageHtml = yield pageRes.text();
+            const $page = cheerio.load(pageHtml);
+            let foundYear = null;
+            const infoBox = $page(".mvic-info");
+            const yearLink = infoBox.find('p:contains("pubblicazione") a[href*="release-year"]');
+            if (yearLink.length) {
+              foundYear = yearLink.text().trim();
+            }
+            if (!foundYear) {
+              const metaDate = $page('meta[content*="20"]').filter((i, el) => {
+                const content = $page(el).attr("content");
+                return content && /^20\d{2}-\d{2}-\d{2}/.test(content);
+              }).first().attr("content");
+              if (metaDate) {
+                foundYear = metaDate.substring(0, 4);
+              }
+            }
+            if (!foundYear) {
+              const globalYearLink = $page('a[href*="release-year"]').filter((i, el) => {
+                const isRelated = $page(el).closest(".mlw-related, footer, #footer").length > 0;
+                return !isRelated;
+              }).first();
+              if (globalYearLink.length) {
+                foundYear = globalYearLink.text().trim();
+              }
+            }
+            if (foundYear) {
+              if (foundYear === year) {
+                targetUrl = result.url;
+                break;
+              }
+            } else {
+              targetUrl = result.url;
+              break;
+            }
+          } catch (e) {
+            targetUrl = result.url;
+            break;
+          }
+        }
+      }
+      if (!targetUrl) {
+        console.log(`[Guardoserie] No matching result found for ${title}`);
         return [];
       }
-    }
-    if (cleanId.startsWith("tmdb:")) cleanId = cleanId.replace("tmdb:", "");
-    let imdbId = cleanId;
-    if (!cleanId.startsWith("tt")) {
-      const convertedId = yield getImdbId(cleanId, type);
-      if (convertedId) imdbId = convertedId;
-      else return [];
-    }
-    let metadata = null;
-    try {
-      metadata = yield getMetadata(cleanId, type);
-    } catch (e) {
-      console.error("[GuardaHD] Error fetching metadata:", e);
-    }
-    const title = metadata && (metadata.title || metadata.name || metadata.original_title || metadata.original_name) ? metadata.title || metadata.name || metadata.original_title || metadata.original_name : normalizedType === "movie" ? "Film Sconosciuto" : "Serie TV";
-    let url;
-    const normalizedType = String(type).toLowerCase();
-    if (normalizedType === "movie") {
-      url = `${BASE_URL}/set-movie-a/${imdbId}`;
-    } else if (normalizedType === "tv") {
-      url = `${BASE_URL}/set-tv-a/${imdbId}/${season}/${episode}`;
-    } else {
-      return [];
-    }
-    try {
-      const response = yield fetch(url, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Referer": BASE_URL
-        }
-      });
-      if (!response.ok) return [];
-      const html = yield response.text();
-      const streams = [];
-      const iframeRegex = /<iframe[^>]+id=["']_player["'][^>]+src=["']([^"']+)["']/;
-      const iframeMatch = iframeRegex.exec(html);
-      const links = [];
-      if (iframeMatch) {
-        links.push({ url: iframeMatch[1], name: "Active Player" });
-      }
-      const linkRegex = /data-link=["']([^"']+)["']/g;
-      let match;
-      while ((match = linkRegex.exec(html)) !== null) {
-        links.push({ url: match[1], name: "Alternative" });
-      }
-      const displayName = normalizedType === "movie" ? title : `${title} ${season}x${episode}`;
-      const processUrl = (link) => __async(null, null, function* () {
-        let streamUrl = link.url;
-        if (streamUrl.startsWith("//")) streamUrl = "https:" + streamUrl;
-        try {
-          if (streamUrl.includes("mixdrop") || streamUrl.includes("m1xdrop")) {
-            console.log(`[GuardaHD] Attempting MixDrop extraction for ${streamUrl}`);
-            const extracted = yield extractMixDrop(streamUrl);
-            if (extracted && extracted.url) {
-              let quality = "HD";
-              const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-              if (playlistQuality) quality = playlistQuality;
-              else {
-                const urlQuality = getQualityFromUrl(extracted.url);
-                if (urlQuality) quality = urlQuality;
-              }
-              const normalizedQuality = getQualityFromName(quality);
-              streams.push({
-                name: `GuardaHD - MixDrop`,
-                title: displayName,
-                url: extracted.url,
-                headers: extracted.headers,
-                quality: normalizedQuality,
-                type: "direct"
-              });
-            }
-          } else if (streamUrl.includes("dropload")) {
-            console.log(`[GuardaHD] Attempting DropLoad extraction for ${streamUrl}`);
-            const extracted = yield extractDropLoad(streamUrl);
-            if (extracted && extracted.url) {
-              let quality = "HD";
-              const playlistQuality = yield checkQualityFromPlaylist(extracted.url, extracted.headers);
-              if (playlistQuality) quality = playlistQuality;
-              else {
-                const urlQuality = getQualityFromUrl(extracted.url);
-                if (urlQuality) quality = urlQuality;
-              }
-              const normalizedQuality = getQualityFromName(quality);
-              streams.push({
-                name: `GuardaHD - DropLoad`,
-                title: displayName,
-                url: extracted.url,
-                headers: extracted.headers,
-                quality: normalizedQuality,
-                type: "direct"
-              });
-            }
-          } else if (streamUrl.includes("supervideo")) {
-            console.log(`[GuardaHD] Attempting SuperVideo extraction for ${streamUrl}`);
-            const extracted = yield extractSuperVideo(streamUrl);
-            if (extracted) {
-              let quality = "HD";
-              const playlistQuality = yield checkQualityFromPlaylist(extracted);
-              if (playlistQuality) quality = playlistQuality;
-              else {
-                const urlQuality = getQualityFromUrl(extracted);
-                if (urlQuality) quality = urlQuality;
-              }
-              const normalizedQuality = getQualityFromName(quality);
-              streams.push({
-                name: `GuardaHD - SuperVideo`,
-                title: displayName,
-                url: extracted,
-                quality: normalizedQuality,
-                type: "direct"
-              });
-            }
+      let episodeUrl = targetUrl;
+      if (type === "tv" || type === "series") {
+        const pageRes = yield fetch(targetUrl, { headers: { "User-Agent": USER_AGENT } });
+        const pageHtml = yield pageRes.text();
+        const $page = cheerio.load(pageHtml);
+        const seasonIndex = parseInt(season) - 1;
+        const episodeIndex = parseInt(episode) - 1;
+        let seasonDiv = $page(".les-content").eq(seasonIndex);
+        if (!seasonDiv.length) {
+          const seasonBlocks = $page(".tvseason");
+          if (seasonBlocks.length > 0) {
+            seasonDiv = seasonBlocks.eq(seasonIndex).find(".les-content");
           }
-        } catch (e) {
-          console.error("[GuardaHD] Process URL error:", e);
         }
-      });
-      yield Promise.all(links.map((link) => processUrl(link)));
-      const uniqueStreams = [];
-      const seenUrls = /* @__PURE__ */ new Set();
-      for (const s of streams) {
-        if (!seenUrls.has(s.url)) {
-          seenUrls.add(s.url);
-          uniqueStreams.push(s);
+        if (!seasonDiv.length) {
+          console.log(`[Guardoserie] Season ${season} not found at ${targetUrl}`);
+          return [];
+        }
+        const episodeA = seasonDiv.find("a").eq(episodeIndex);
+        if (!episodeA.length) {
+          console.log(`[Guardoserie] Episode ${episode} not found in Season ${season}`);
+          return [];
+        }
+        episodeUrl = episodeA.attr("href");
+      }
+      console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
+      const finalRes = yield fetch(episodeUrl, { headers: { "User-Agent": USER_AGENT } });
+      const finalHtml = yield finalRes.text();
+      const $final = cheerio.load(finalHtml);
+      const iframe = $final("iframe");
+      const playerLink = iframe.attr("data-src") || iframe.attr("src");
+      if (!playerLink) {
+        console.log(`[Guardoserie] No player iframe found`);
+        return [];
+      }
+      console.log(`[Guardoserie] Found player link: ${playerLink}`);
+      const displayName = type === "tv" || type === "series" ? `${title} ${season}x${episode}` : title;
+      let streams = [];
+      if (playerLink.includes("loadm")) {
+        const domain = new URL(BASE_URL).hostname;
+        const extracted = yield extractLoadm(playerLink, domain);
+        for (const s of extracted || []) {
+          let quality = "HD";
+          if (s.url.includes(".m3u8")) {
+            const detected = yield checkQualityFromPlaylist(s.url, s.headers || {});
+            if (detected) quality = detected;
+          }
+          const normalizedQuality = getQualityFromName(quality);
+          streams.push(formatStream({
+            url: s.url,
+            headers: s.headers,
+            name: `Guardoserie - Loadm`,
+            title: displayName,
+            quality: normalizedQuality,
+            type: "direct",
+            behaviorHints: s.behaviorHints
+          }, "Guardoserie"));
+        }
+      } else if (playerLink.includes("uqload")) {
+        const extracted = yield extractUqload(playerLink);
+        if (extracted && extracted.url) {
+          let quality = "HD";
+          const normalizedQuality = getQualityFromName(quality);
+          streams.push(formatStream({
+            url: extracted.url,
+            headers: extracted.headers,
+            name: `Guardoserie - Uqload`,
+            title: displayName,
+            quality: normalizedQuality,
+            type: "direct"
+          }, "Guardoserie"));
+        }
+      } else if (playerLink.includes("dropload")) {
+        const extracted = yield extractDropLoad(playerLink);
+        if (extracted && extracted.url) {
+          let quality = "HD";
+          if (extracted.url.includes(".m3u8")) {
+            const detected = yield checkQualityFromPlaylist(extracted.url, extracted.headers || {});
+            if (detected) quality = detected;
+          }
+          const normalizedQuality = getQualityFromName(quality);
+          streams.push(formatStream({
+            url: extracted.url,
+            headers: extracted.headers,
+            name: `Guardoserie - DropLoad`,
+            title: displayName,
+            quality: normalizedQuality,
+            type: "direct"
+          }, "Guardoserie"));
         }
       }
-      return uniqueStreams.map((s) => formatStream(s, "GuardaHD")).filter((s) => s !== null);
-    } catch (error) {
-      console.error("[GuardaHD] Error:", error);
+      return streams;
+    } catch (e) {
+      console.error(`[Guardoserie] Error:`, e);
       return [];
     }
   });

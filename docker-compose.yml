@@ -9,6 +9,7 @@ services:
     environment:
       - PORT=7000
       - NODE_ENV=production
+      #- CF_PROXY_URL=https://********.workers.dev/
     restart: unless-stopped
     # Optional: Mount source code for development (uncomment if needed)
     # volumes:

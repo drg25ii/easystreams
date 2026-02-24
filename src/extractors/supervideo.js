@@ -1,4 +1,4 @@
-const { USER_AGENT, unPack } = require('./common');
+const { USER_AGENT, unPack, getProxiedUrl } = require('./common');
 
 async function extractSuperVideo(url, refererBase = null) {
   try {
@@ -11,7 +11,10 @@ async function extractSuperVideo(url, refererBase = null) {
     
     if (!refererBase) refererBase = "https://guardahd.stream/"; // Default referer if missing
 
-    let response = await fetch(embedUrl, {
+    // Use proxy for the initial fetch to bypass Cloudflare if configured
+    const proxiedUrl = getProxiedUrl(embedUrl);
+
+    let response = await fetch(proxiedUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         "Referer": refererBase

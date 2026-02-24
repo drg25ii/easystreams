@@ -210,7 +210,7 @@ var require_tmdb_helper = __commonJS({
 // src/fetch_helper.js
 var require_fetch_helper = __commonJS({
   "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 15e3;
+    var FETCH_TIMEOUT = 3e4;
     var originalFetch = global.fetch;
     if (!originalFetch) {
       try {
@@ -1429,18 +1429,24 @@ function getStreams(id, type, season, episode, providedMetadata = null) {
                 }
                 if (isDub && !displayTitle.includes("(ITA)")) displayTitle += " (ITA)";
                 if (!isDub && !displayTitle.includes("(SUB ITA)")) displayTitle += " (SUB ITA)";
-                results.push({
-                  name: serverName,
-                  title: displayTitle,
-                  server: serverName,
-                  url: infoData.grabber,
-                  quality,
-                  isM3U8: infoData.grabber.includes(".m3u8"),
-                  headers: {
-                    "User-Agent": USER_AGENT,
-                    "Referer": animeUrl
-                  }
-                });
+                const blockedDomains = ["jujutsukaisenanime.com", "onepunchman.it", "dragonballhd.it", "narutolegend.it"];
+                const lowerLink = (infoData.grabber || "").toLowerCase();
+                if (lowerLink.endsWith(".mkv.mp4") || blockedDomains.some((d) => lowerLink.includes(d))) {
+                  console.log(`[AnimeWorld] Skipping unwanted link: ${infoData.grabber}`);
+                } else {
+                  results.push({
+                    name: serverName,
+                    title: displayTitle,
+                    server: serverName,
+                    url: infoData.grabber,
+                    quality,
+                    isM3U8: infoData.grabber.includes(".m3u8"),
+                    headers: {
+                      "User-Agent": USER_AGENT,
+                      "Referer": animeUrl
+                    }
+                  });
+                }
               }
             }
           } else {

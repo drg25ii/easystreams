@@ -100,7 +100,7 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
                 platform: 'neutral',
                 target: ['es2016'],
                 format: 'cjs',
-                external: ['cheerio-without-node-native', 'crypto-js', 'axios'] // Exclude these
+                external: ['cheerio', 'cheerio-select', 'crypto-js', 'axios'] // Exclude these
             });
             console.log(`✅ Built ${provider}`);
         } catch (e) {

@@ -106,7 +106,7 @@ ${pName}`;
 // src/fetch_helper.js
 var require_fetch_helper = __commonJS({
   "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 15e3;
+    var FETCH_TIMEOUT = 3e4;
     var originalFetch = global.fetch;
     if (!originalFetch) {
       try {

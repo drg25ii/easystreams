@@ -46,6 +46,14 @@ var __async = (__this, __arguments, generator) => {
 var require_common = __commonJS({
   "src/extractors/common.js"(exports2, module2) {
     var USER_AGENT2 = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
+    function getProxiedUrl(url) {
+      const proxyUrl = process.env.CF_PROXY_URL;
+      if (proxyUrl && url) {
+        const separator = proxyUrl.includes("?") ? "&" : "?";
+        return `${proxyUrl}${separator}url=${encodeURIComponent(url)}`;
+      }
+      return url;
+    }
     function unPack(p, a, c, k, e, d) {
       e = function(c2) {
         return (c2 < a ? "" : e(parseInt(c2 / a))) + ((c2 = c2 % a) > 35 ? String.fromCharCode(c2 + 29) : c2.toString(36));
@@ -71,7 +79,8 @@ var require_common = __commonJS({
     }
     module2.exports = {
       USER_AGENT: USER_AGENT2,
-      unPack
+      unPack,
+      getProxiedUrl
     };
   }
 });
@@ -178,7 +187,7 @@ var require_dropload = __commonJS({
 // src/extractors/supervideo.js
 var require_supervideo = __commonJS({
   "src/extractors/supervideo.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, unPack } = require_common();
+    var { USER_AGENT: USER_AGENT2, unPack, getProxiedUrl } = require_common();
     function extractSuperVideo2(url, refererBase = null) {
       return __async(this, null, function* () {
         try {
@@ -186,7 +195,8 @@ var require_supervideo = __commonJS({
           const id = url.split("/").pop();
           const embedUrl = `https://supervideo.tv/e/${id}`;
           if (!refererBase) refererBase = "https://guardahd.stream/";
-          let response = yield fetch(embedUrl, {
+          const proxiedUrl = getProxiedUrl(embedUrl);
+          let response = yield fetch(proxiedUrl, {
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": refererBase
@@ -444,25 +454,6 @@ var require_vixcloud = __commonJS({
           if (!response.ok) return null;
           const html = yield response.text();
           const streams = [];
-          const downloadRegex = /window\.downloadUrl\s*=\s*'([^']+)'/;
-          const downloadMatch = downloadRegex.exec(html);
-          if (downloadMatch) {
-            const downloadUrl = downloadMatch[1];
-            let quality = "Unknown";
-            if (downloadUrl.includes("1080p")) quality = "1080p";
-            else if (downloadUrl.includes("720p")) quality = "720p";
-            else if (downloadUrl.includes("480p")) quality = "480p";
-            else if (downloadUrl.includes("360p")) quality = "360p";
-            streams.push({
-              url: downloadUrl,
-              quality,
-              type: "direct",
-              headers: {
-                "User-Agent": USER_AGENT2,
-                "Referer": "https://vixcloud.co/"
-              }
-            });
-          }
           const tokenRegex = /'token':\s*'(\w+)'/;
           const expiresRegex = /'expires':\s*'(\d+)'/;
           const urlRegex = /url:\s*'([^']+)'/;
@@ -516,6 +507,103 @@ var require_vixcloud = __commonJS({
   }
 });
 
+// src/extractors/loadm.js
+var require_loadm = __commonJS({
+  "src/extractors/loadm.js"(exports2, module2) {
+    var CryptoJS = require("crypto-js");
+    var { USER_AGENT: USER_AGENT2 } = require_common();
+    function extractLoadm(playerUrl, referer = "guardoserie.horse") {
+      return __async(this, null, function* () {
+        try {
+          if (!playerUrl.includes("#")) return [];
+          const parts = playerUrl.split("#");
+          const baseUrl = parts[0];
+          const id = parts[1];
+          const apiUrl = `${baseUrl}api/v1/video`;
+          const key = CryptoJS.enc.Utf8.parse("kiemtienmua911ca");
+          const iv = CryptoJS.enc.Utf8.parse("1234567890oiuytr");
+          const params = new URLSearchParams({
+            id,
+            w: "2560",
+            h: "1440",
+            r: referer
+          });
+          const response = yield fetch(`${apiUrl}?${params.toString()}`, {
+            headers: {
+              "User-Agent": USER_AGENT2,
+              "Referer": baseUrl,
+              "X-Requested-With": "XMLHttpRequest"
+            }
+          });
+          if (!response.ok) {
+            console.error(`[Loadm] API error: ${response.status}`);
+            return [];
+          }
+          const hexData = yield response.text();
+          const ciphertext = CryptoJS.enc.Hex.parse(hexData);
+          const decrypted = CryptoJS.AES.decrypt(
+            { ciphertext },
+            key,
+            {
+              iv,
+              mode: CryptoJS.mode.CBC,
+              padding: CryptoJS.pad.Pkcs7
+            }
+          );
+          const decryptedStr = decrypted.toString(CryptoJS.enc.Utf8).trim();
+          if (!decryptedStr) {
+            console.error(`[Loadm] Decryption failed`);
+            return [];
+          }
+          const lastBraceIndex = decryptedStr.lastIndexOf("}");
+          const cleanJson = lastBraceIndex !== -1 ? decryptedStr.substring(0, lastBraceIndex + 1) : decryptedStr;
+          const data = JSON.parse(cleanJson);
+          const streams = [];
+          if (data.cf) {
+            let streamUrl = data.cf;
+            if (streamUrl.includes(".txt")) {
+              streamUrl += "#index.m3u8";
+            }
+            streams.push({
+              name: "Loadm (Player 1)",
+              url: streamUrl,
+              title: data.title || "HLS",
+              behaviorHints: {
+                proxyHeaders: {
+                  request: {
+                    "Referer": baseUrl
+                  }
+                },
+                notWebReady: true
+              }
+            });
+          }
+          if (data.source) {
+            streams.push({
+              name: "Loadm (Player 2)",
+              url: data.source,
+              title: data.title || "M3U8",
+              behaviorHints: {
+                proxyHeaders: {
+                  request: {
+                    "Referer": baseUrl
+                  }
+                },
+                notWebReady: true
+              }
+            });
+          }
+          return streams;
+        } catch (e) {
+          console.error(`[Loadm] Extraction error:`, e);
+          return [];
+        }
+      });
+    }
+    module2.exports = { extractLoadm };
+  }
+});
+
 // src/extractors/index.js
 var require_extractors = __commonJS({
   "src/extractors/index.js"(exports2, module2) {
@@ -527,6 +615,7 @@ var require_extractors = __commonJS({
     var { extractUpstream: extractUpstream2 } = require_upstream();
     var { extractVidoza } = require_vidoza();
     var { extractVixCloud } = require_vixcloud();
+    var { extractLoadm } = require_loadm();
     var { USER_AGENT: USER_AGENT2, unPack } = require_common();
     module2.exports = {
       extractMixDrop: extractMixDrop2,
@@ -537,6 +626,7 @@ var require_extractors = __commonJS({
       extractUpstream: extractUpstream2,
       extractVidoza,
       extractVixCloud,
+      extractLoadm,
       USER_AGENT: USER_AGENT2,
       unPack
     };
@@ -546,7 +636,7 @@ var require_extractors = __commonJS({
 // src/fetch_helper.js
 var require_fetch_helper = __commonJS({
   "src/fetch_helper.js"(exports2, module2) {
-    var FETCH_TIMEOUT = 15e3;
+    var FETCH_TIMEOUT = 3e4;
     var originalFetch = global.fetch;
     if (!originalFetch) {
       try {
@@ -836,7 +926,7 @@ var __async2 = (__this, __arguments, generator) => {
     step((generator = generator.apply(__this, __arguments)).next());
   });
 };
-var BASE_URL = "https://guardaserietv.best";
+var BASE_URL = "https://guardaserietv.autos";
 var TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
 var USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36";
 var { extractMixDrop, extractDropLoad, extractSuperVideo, extractUqload, extractUpstream } = require_extractors();
@@ -915,14 +1005,8 @@ function getTmdbIdFromImdb(imdbId, type) {
       if (type === "movie" && ((_a = data.movie_results) == null ? void 0 : _a.length) > 0) return data.movie_results[0].id;
       if (type === "tv") {
         if (((_b = data.tv_results) == null ? void 0 : _b.length) > 0) return data.tv_results[0].id;
-        if (Array.isArray(data.tv_episode_results) && data.tv_episode_results.length > 0) {
-          const ep = data.tv_episode_results[0];
-          if (ep && ep.show_id) return ep.show_id;
-        }
-        if (Array.isArray(data.tv_season_results) && data.tv_season_results.length > 0) {
-          const s = data.tv_season_results[0];
-          if (s && s.show_id) return s.show_id;
-        }
+        if (data.tv_episode_results && data.tv_episode_results.length > 0) return data.tv_episode_results[0].show_id;
+        if (data.tv_season_results && data.tv_season_results.length > 0) return data.tv_season_results[0].show_id;
       }
       return null;
     } catch (e) {
@@ -987,6 +1071,8 @@ function getStreams(id, type, season, episode) {
         tmdbId = yield getTmdbIdFromImdb(imdbCore, type);
         if (!tmdbId) {
           console.log(`[Guardaserie] Could not convert ${id} to TMDB ID. Continuing with IMDb ID.`);
+        } else {
+          console.log(`[Guardaserie] Converted ${id} to TMDB ID: ${tmdbId}`);
         }
       } else if (id.toString().startsWith("kitsu:")) {
         const resolved = yield getTmdbFromKitsu(id);
@@ -1065,7 +1151,8 @@ function getStreams(id, type, season, episode) {
             const resultRegex = /<div class="mlnh-2">\s*<h2>\s*<a href="([^"]+)" title="([^"]+)">/i;
             const match = resultRegex.exec(searchHtml);
             if (match) {
-              const foundUrl = match[1];
+              let foundUrl = match[1];
+              if (foundUrl.startsWith("/")) foundUrl = `${BASE_URL}${foundUrl}`;
               console.log(`[Guardaserie] Found match by IMDb ID: ${foundUrl}`);
               const pageResponse = yield fetch(foundUrl, {
                 headers: {

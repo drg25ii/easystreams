@@ -1,5 +1,5 @@
 
-const FETCH_TIMEOUT = 15000; // 15 seconds
+const FETCH_TIMEOUT = 30000; // 30 seconds
 
 let originalFetch = global.fetch;
 
@@ -17,7 +17,7 @@ if (!originalFetch) {
     }
 }
 
-const fetchWithTimeout = async function(url, options = {}) {
+const fetchWithTimeout = async function (url, options = {}) {
     // If a signal is already provided, respect it
     if (options.signal) {
         return originalFetch(url, options);

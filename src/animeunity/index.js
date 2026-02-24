@@ -979,31 +979,38 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = f
 
         // 1. Direct Link
         if (targetEpisode.link && targetEpisode.link.startsWith("http")) {
-            let quality = extractQuality(targetEpisode.link);
-            if (quality === "Unknown") quality = extractQuality(targetEpisode.file_name);
+            // Filter out unwanted mp4 links (e.g. .mkv.mp4 or known problematic/scam domains)
+            const blockedDomains = ['jujutsukaisenanime.com', 'onepunchman.it', 'dragonballhd.it', 'narutolegend.it'];
+            const lowerLink = targetEpisode.link.toLowerCase();
+            if (lowerLink.endsWith('.mkv.mp4') || blockedDomains.some(d => lowerLink.includes(d))) {
+                console.log(`[AnimeUnity] Skipping unwanted link: ${targetEpisode.link}`);
+            } else {
+                let quality = extractQuality(targetEpisode.link);
+                if (quality === "Unknown") quality = extractQuality(targetEpisode.file_name);
 
-            if (targetEpisode.link.includes('.m3u8')) {
-                const detected = await checkQualityFromPlaylist(targetEpisode.link, {
-                    "User-Agent": USER_AGENT,
-                    "Referer": BASE_URL
-                });
-                if (detected) quality = detected;
-            }
-
-            // Ensure anime.title is not null/undefined
-            const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
-
-            streams.push({
-                name: "AnimeUnity" + labelSuffix,
-                title: displayTitle,
-                url: targetEpisode.link,
-                quality: quality,
-                type: "direct",
-                headers: {
-                    "User-Agent": USER_AGENT,
-                    "Referer": BASE_URL
+                if (targetEpisode.link.includes('.m3u8')) {
+                    const detected = await checkQualityFromPlaylist(targetEpisode.link, {
+                        "User-Agent": USER_AGENT,
+                        "Referer": BASE_URL
+                    });
+                    if (detected) quality = detected;
                 }
-            });
+
+                // Ensure anime.title is not null/undefined
+                const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
+
+                streams.push({
+                    name: "AnimeUnity" + labelSuffix,
+                    title: displayTitle,
+                    url: targetEpisode.link,
+                    quality: quality,
+                    type: "direct",
+                    headers: {
+                        "User-Agent": USER_AGENT,
+                        "Referer": BASE_URL
+                    }
+                });
+            }
         }
 
         // 2. VixCloud Embed (scws_id)

@@ -1486,18 +1486,25 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                             if (isDub && !displayTitle.includes("(ITA)")) displayTitle += " (ITA)";
                             if (!isDub && !displayTitle.includes("(SUB ITA)")) displayTitle += " (SUB ITA)";
 
-                            results.push({
-                                name: serverName,
-                                title: displayTitle,
-                                server: serverName,
-                                url: infoData.grabber,
-                                quality: quality,
-                                isM3U8: infoData.grabber.includes('.m3u8'),
-                                headers: {
-                                    "User-Agent": USER_AGENT,
-                                    "Referer": animeUrl
-                                }
-                            });
+                            // Filter out unwanted mp4 links (e.g. .mkv.mp4 or known problematic/scam domains)
+                            const blockedDomains = ['jujutsukaisenanime.com', 'onepunchman.it', 'dragonballhd.it', 'narutolegend.it'];
+                            const lowerLink = (infoData.grabber || "").toLowerCase();
+                            if (lowerLink.endsWith('.mkv.mp4') || blockedDomains.some(d => lowerLink.includes(d))) {
+                                console.log(`[AnimeWorld] Skipping unwanted link: ${infoData.grabber}`);
+                            } else {
+                                results.push({
+                                    name: serverName,
+                                    title: displayTitle,
+                                    server: serverName,
+                                    url: infoData.grabber,
+                                    quality: quality,
+                                    isM3U8: infoData.grabber.includes('.m3u8'),
+                                    headers: {
+                                        "User-Agent": USER_AGENT,
+                                        "Referer": animeUrl
+                                    }
+                                });
+                            }
                         }
                     }
                 } else {

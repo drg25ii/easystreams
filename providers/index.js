@@ -22,6 +22,7 @@ const streamingcommunity = require("./streamingcommunity");
 const guardahd = require("./guardahd");
 const eurostreaming = require("./eurostreaming");
 const guardaserie = require("./guardaserie");
+const guardoserie = require("../src/guardoserie/index");
 const animeunity = require("./animeunity");
 function getStreams(id, type, season, episode) {
   return __async(this, null, function* () {
@@ -39,6 +40,9 @@ function getStreams(id, type, season, episode) {
       promises.push(
         guardahd.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "GuardaHD", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "GuardaHD", error, status: "rejected" }))
       );
+      promises.push(
+        guardoserie.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "Guardoserie", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "Guardoserie", error, status: "rejected" }))
+      );
     }
     if (normalizedType === "tv") {
       promises.push(
@@ -46,6 +50,9 @@ function getStreams(id, type, season, episode) {
       );
       promises.push(
         guardaserie.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "Guardaserie", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "Guardaserie", error, status: "rejected" }))
+      );
+      promises.push(
+        guardoserie.getStreams(id, normalizedType, season, episode).then((streams2) => ({ provider: "Guardoserie", streams: streams2, status: "fulfilled" })).catch((error) => ({ provider: "Guardoserie", error, status: "rejected" }))
       );
     }
     const results = yield Promise.all(promises);

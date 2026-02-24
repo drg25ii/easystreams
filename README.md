@@ -13,6 +13,7 @@ Il progetto è progettato per essere versatile e può essere utilizzato in due m
 -   **EuroStreaming** (Serie TV)
 -   **GuardaHD** (Film)
 -   **GuardaSerie** (Serie TV)
+-   **GuardaOSerie** (Film & Serie TV)
 -   **StreamingCommunity** (Film & Serie TV)
 
 ---
@@ -60,6 +61,24 @@ Se preferisci usare Docker (ottimo per NAS o server casalinghi):
 ### Deploy su Cloud (HuggingFace, Render, ecc.)
 Puoi caricare questo repository su servizi come HuggingFace.
 Tuttavia, tieni presente che **alcuni provider potrebbero non funzionare** a causa dei blocchi geografici o dei blocchi IP dei datacenter imposti dai siti sorgente.
+
+---
+
+## ⚙️ Configurazione Avanzata (Addon Stremio)
+
+Quando l'addon viene eseguito su un server remoto (non in locale), alcuni provider potrebbero riscontrare problemi tecnici dovuti alle protezioni dei siti sorgente.
+
+
+### ⚡ SuperVideo (Proxy Cloudflare Worker)
+**SuperVideo** utilizza forti protezioni Cloudflare che spesso bloccano i server cloud (403 Forbidden). Per risolvere questo problema, è necessario configurare un **Cloudflare Worker** come proxy.
+
+1.  Crea un nuovo Worker su Cloudflare.
+2.  Incolla il codice contenuto nel file `worker.js` di questo repository.
+3.  Salva e pubblica il worker per ottenere un URL (es. `https://mio-proxy.workers.dev/`).
+4.  Imposta la variabile d'ambiente sul tuo server:
+    ```text
+    CF_PROXY_URL=https://mio-proxy.workers.dev/
+    ```
 
 ---
 

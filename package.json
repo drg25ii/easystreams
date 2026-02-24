@@ -1,6 +1,6 @@
 {
   "name": "easystreams",
-  "version": "1.0.45",
+  "version": "1.0.55",
   "description": "",
   "main": "stremio_addon.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "crypto-js": "^4.2.0",
     "esbuild": "^0.27.3",
     "express": "^5.2.1",
+    "https-proxy-agent": "^7.0.6",
     "node-fetch": "^2.7.0",
     "stremio-addon-sdk": "^1.6.10"
   }

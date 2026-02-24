@@ -3,6 +3,7 @@ const { USER_AGENT, unPack } = require('./common');
 async function extractMixDrop(url, refererBase = 'https://m1xdrop.net/') {
   try {
     if (url.startsWith("//")) url = "https:" + url;
+    
     const response = await fetch(url, {
       headers: {
         "User-Agent": USER_AGENT,
