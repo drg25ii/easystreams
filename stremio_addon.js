@@ -121,7 +121,7 @@ const providers = {
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.0.55',
+    version: '1.0.56',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
@@ -215,17 +215,16 @@ builder.defineStreamHandler(async ({ type, id }) => {
                     return !server.includes('mixdrop') && !sName.includes('mixdrop') && !sTitle.includes('mixdrop');
                 })
                 .map(s => {
-                    // For Stremio, we want the quality as the main name if available
-                    // The formatter now returns name as provider name and title as description
-                    const displayQuality = s.quality ?
-                        (s.quality === '4K' ? '🔥4K UHD' :
-                            s.quality === '1440p' ? '✨ QHD' :
-                                s.quality === '1080p' ? '🚀 FHD' :
-                                    s.quality === '720p' ? '💿 HD' : s.quality) : 'Direct';
+                    // For Stremio, we reconstruct the legacy multiline format
+                    const nameUI = (s._quality && s._quality !== 'Unknown') ? s._quality : s._pName;
+
+                    let titleUI = `📁 ${s._rawTitle}\n${s._pName}`;
+                    if (s._desc) titleUI += ` | ${s._desc}`;
+                    if (s.language) titleUI += `\n🗣️ ${s.language}`;
 
                     return {
-                        name: displayQuality,
-                        title: s.title,
+                        name: nameUI,
+                        title: titleUI,
                         url: s.url,
                         behaviorHints: {
                             ...(s.behaviorHints || {}),
