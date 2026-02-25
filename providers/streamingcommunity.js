@@ -351,7 +351,8 @@ function getStreams(id, type, season, episode) {
           });
           if (playlistResponse.ok) {
             const playlistText = yield playlistResponse.text();
-            const hasItalian = /LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita"/i.test(playlistText);
+            // We specifically look for Italian audio, not subtitles (TYPE=AUDIO)
+            const hasItalian = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
             const detected = checkQualityFromText(playlistText);
             if (detected) quality = detected;
             const originalLanguageItalian = metadata && (metadata.original_language === "it" || metadata.original_language === "ita");

@@ -161,7 +161,8 @@ async function getStreams(id, type, season, episode) {
         if (playlistResponse.ok) {
           const playlistText = await playlistResponse.text();
           // Basic quality detection from playlist content
-          const hasItalian = /LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita"/i.test(playlistText);
+          // We specifically look for Italian audio, not subtitles (TYPE=AUDIO)
+          const hasItalian = /#EXT-X-MEDIA:TYPE=AUDIO.*(?:LANGUAGE="it"|LANGUAGE="ita"|NAME="Italian"|NAME="Ita")/i.test(playlistText);
 
           const detected = checkQualityFromText(playlistText);
           if (detected) quality = detected;

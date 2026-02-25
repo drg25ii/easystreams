@@ -268,19 +268,26 @@ function getStreams(id, type, season, episode) {
 
             if (match) {
               let foundUrl = match[1];
-              if (foundUrl.startsWith('/')) foundUrl = `${BASE_URL}${foundUrl}`;
-              console.log(`[Guardaserie] Found match by IMDb ID: ${foundUrl}`);
+              const foundTitle = match[2];
 
-              const pageResponse = yield fetch(foundUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                  "Referer": BASE_URL
+              // Filter out titles with [SUB ITA]
+              if (foundTitle.toUpperCase().includes("[SUB ITA]")) {
+                console.log(`[Guardaserie] Filtering out subbed result from IMDb search: ${foundTitle}`);
+              } else {
+                if (foundUrl.startsWith('/')) foundUrl = `${BASE_URL}${foundUrl}`;
+                console.log(`[Guardaserie] Found match by IMDb ID: ${foundUrl}`);
+
+                const pageResponse = yield fetch(foundUrl, {
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Referer": BASE_URL
+                  }
+                });
+
+                if (pageResponse.ok) {
+                  showHtml = yield pageResponse.text();
+                  showUrl = foundUrl;
                 }
-              });
-
-              if (pageResponse.ok) {
-                showHtml = yield pageResponse.text();
-                showUrl = foundUrl;
               }
             }
           }
@@ -314,6 +321,12 @@ function getStreams(id, type, season, episode) {
           const foundUrl = match[1];
           const foundTitle = match[2];
           const foundYearStr = match[3];
+
+          // Filter out titles with [SUB ITA]
+          if (foundTitle.toUpperCase().includes("[SUB ITA]")) {
+            console.log(`[Guardaserie] Filtering out subbed result: ${foundTitle}`);
+            continue;
+          }
 
           if (foundTitle.toLowerCase().includes(title.toLowerCase())) {
             candidates.push({
