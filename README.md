@@ -10,7 +10,6 @@ Il progetto è progettato per essere versatile e può essere utilizzato in due m
 
 -   **AnimeUnity** (Anime)
 -   **AnimeWorld** (Anime)
--   **EuroStreaming** (Serie TV)
 -   **GuardaHD** (Film)
 -   **GuardaSerie** (Serie TV)
 -   **GuardaOSerie** (Film & Serie TV)
