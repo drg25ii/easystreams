@@ -282,12 +282,12 @@ var require_streamtape = __commonJS({
 // src/extractors/uqload.js
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, getProxiedUrl } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractUqload(url, refererBase = "https://uqload.io/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const response = yield fetch(getProxiedUrl(url), {
+          const response = yield fetch(url, {
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": refererBase
@@ -7235,18 +7235,33 @@ var require_fetch_helper = __commonJS({
 var require_tmdb_helper = __commonJS({
   "src/tmdb_helper.js"(exports2, module2) {
     var TMDB_API_KEY2 = "68e094699525b18a70bab2f86b1fa706";
+    var MAPPING_API_URL = "https://animemapping.stremio.dpdns.org";
     function getTmdbFromKitsu2(kitsuId) {
       return __async(this, null, function* () {
         var _a, _b, _c, _d;
         try {
           const id = String(kitsuId).replace("kitsu:", "");
+          let tmdbId = null;
+          let season = null;
+          if (MAPPING_API_URL) {
+            try {
+              const apiResponse = yield fetch(`${MAPPING_API_URL}/mapping/${id}`);
+              if (apiResponse.ok) {
+                const apiData = yield apiResponse.json();
+                if (apiData.tmdbId) {
+                  console.log(`[TMDB Helper] API Hit! Kitsu ${id} -> TMDB ${apiData.tmdbId}, Season ${apiData.season}`);
+                  return { tmdbId: apiData.tmdbId, season: apiData.season };
+                }
+              }
+            } catch (apiErr) {
+              console.warn("[TMDB Helper] Mapping API Error:", apiErr.message);
+            }
+          }
           const mappingResponse = yield fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
           let mappingData = null;
           if (mappingResponse.ok) {
             mappingData = yield mappingResponse.json();
           }
-          let tmdbId = null;
-          let season = null;
           if (mappingData && mappingData.data) {
             const tvdbMapping = mappingData.data.find((m) => m.attributes.externalSite === "thetvdb");
             if (tvdbMapping) {
@@ -7292,8 +7307,9 @@ var require_tmdb_helper = __commonJS({
                   let yearParam = "";
                   if (type === "movie") yearParam = `&primary_release_year=${year}`;
                   else yearParam = `&first_air_date_year=${year}`;
-                  const searchUrlYear = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title2)}&api_key=${TMDB_API_KEY2}${yearParam}`;
-                  const res = yield fetch(searchUrlYear);
+                  const searchUrlYear = `https://api.themoviedb.org/3/find/${title2}?api_key=${TMDB_API_KEY2}${yearParam}`;
+                  const searchUrlYearCorrect = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title2)}&api_key=${TMDB_API_KEY2}${yearParam}`;
+                  const res = yield fetch(searchUrlYearCorrect);
                   const data = yield res.json();
                   if (data.results && data.results.length > 0) {
                     searchData = data;
@@ -7342,6 +7358,12 @@ var require_tmdb_helper = __commonJS({
               else if (title.match(/\sIII$/)) season = 3;
               else if (title.match(/\sIV$/)) season = 4;
               else if (title.match(/\sV$/)) season = 5;
+              else if (title.match(/\sVI$/)) season = 6;
+              else if (title.includes("Final Season")) {
+              }
+              if (season) {
+                console.log(`[TMDB Helper] Heuristic Season detected for ${id}: Season ${season} (${title})`);
+              }
             }
           }
           return { tmdbId, season };

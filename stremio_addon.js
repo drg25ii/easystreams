@@ -79,8 +79,8 @@ app.use((req, res, next) => {
 });
 
 // Global timeout configuration
-const FETCH_TIMEOUT = 10000; // 10 seconds for HTTP requests
-const PROVIDER_TIMEOUT = 15000; // 15 seconds for provider execution
+const FETCH_TIMEOUT = 5000; // 5 seconds for HTTP requests
+const PROVIDER_TIMEOUT = 10000; // 10 seconds for provider execution
 
 // Wrap global fetch to enforce timeout
 const originalFetch = global.fetch;

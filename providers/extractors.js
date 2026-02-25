@@ -279,12 +279,12 @@ var require_streamtape = __commonJS({
 // src/extractors/uqload.js
 var require_uqload = __commonJS({
   "src/extractors/uqload.js"(exports2, module2) {
-    var { USER_AGENT: USER_AGENT2, getProxiedUrl } = require_common();
+    var { USER_AGENT: USER_AGENT2 } = require_common();
     function extractUqload2(url, refererBase = "https://uqload.io/") {
       return __async(this, null, function* () {
         try {
           if (url.startsWith("//")) url = "https:" + url;
-          const response = yield fetch(getProxiedUrl(url), {
+          const response = yield fetch(url, {
             headers: {
               "User-Agent": USER_AGENT2,
               "Referer": refererBase

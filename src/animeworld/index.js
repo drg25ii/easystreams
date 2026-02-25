@@ -72,12 +72,22 @@ async function getMetadata(id, type) {
             console.error("[AnimeWorld] Alt titles fetch error:", e);
         }
 
+        // Extract specific season name if mappedSeason is present
+        let seasonName = null;
+        if (mappedSeason && details.seasons) {
+            const targetSeason = details.seasons.find(s => s.season_number === mappedSeason);
+            if (targetSeason && targetSeason.name && !targetSeason.name.includes("Stagione") && !targetSeason.name.includes("Season")) {
+                seasonName = targetSeason.name;
+            }
+        }
+
         return {
             ...details,
             imdb_id,
             tmdb_id: tmdbId,
             alternatives,
-            mappedSeason
+            mappedSeason,
+            seasonName
         };
     } catch (e) {
         console.error("[AnimeWorld] Metadata error:", e);
@@ -264,6 +274,19 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
 
             const s2 = getSimilarityScore(c.title, originalTitle);
             bestScore = Math.max(bestScore, s2);
+
+            if (season && season > 1) {
+                const s3 = getSimilarityScore(c.title, `${title} ${season}`);
+                const s4 = getSimilarityScore(c.title, `${originalTitle} ${season}`);
+                bestScore = Math.max(bestScore, s3, s4);
+            }
+
+            if (options.seasonName) {
+                const s5 = getSimilarityScore(c.title, options.seasonName);
+                const s6 = getSimilarityScore(c.title, `${title} ${options.seasonName}`);
+                const s7 = getSimilarityScore(c.title, `${originalTitle} ${options.seasonName}`);
+                bestScore = Math.max(bestScore, s5, s6, s7);
+            }
 
             if (c.matchedAltTitle) {
                 const s3 = getSimilarityScore(c.title, c.matchedAltTitle);
@@ -574,7 +597,10 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             if (regex.test(t)) {
                 // Additional check: Make sure the base title matches too!
                 // e.g. "One Piece 2" should match "One Piece" but not "Two Piece 2"
-                return checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle);
+                return checkSimilarity(c.title, title) ||
+                    checkSimilarity(c.title, originalTitle) ||
+                    checkSimilarity(c.title, `${title} ${season}`) ||
+                    checkSimilarity(c.title, `${originalTitle} ${season}`);
             }
             return false;
         });
@@ -589,7 +615,10 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                 const regex = new RegExp(`\\b${romanStr}$|\\b${romanStr}\\b`, 'i');
                 if (regex.test(t)) {
                     // Additional check: Make sure the base title matches too!
-                    return checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle);
+                    return checkSimilarity(c.title, title) ||
+                        checkSimilarity(c.title, originalTitle) ||
+                        checkSimilarity(c.title, `${title} ${season}`) ||
+                        checkSimilarity(c.title, `${originalTitle} ${season}`);
                 }
                 return false;
             });
@@ -903,23 +932,37 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                 searchQueries.push(`${originalTitle} ${season}`);
             }
 
-            // TMDB Season Name
-            const seasonMeta = await getSeasonMetadata(metadata.id, season);
-            if (seasonMeta && seasonMeta.name && !seasonMeta.name.match(/^Season \d+|^Stagione \d+/i)) {
+            // Season name search (e.g. "Diamond is Unbreakable")
+            if (metadata.seasonName) {
                 const seasonQueries = [
-                    `${title} ${seasonMeta.name}`,
-                    seasonMeta.name
+                    `${title} ${metadata.seasonName}`,
+                    metadata.seasonName
                 ];
+                // Only add original title if it's likely to be useful (e.g. English/Romaji)
+                if (originalTitle && originalTitle !== title && !originalTitle.match(/[\u3040-\u30ff\u4e00-\u9faf]/)) {
+                    seasonQueries.push(`${originalTitle} ${metadata.seasonName}`);
+                }
 
                 for (const query of seasonQueries) {
-                    // console.log(`[AnimeWorld] Specific Season Name search: ${query}`);
+                    console.log(`[AnimeWorld] Strategy 1 - Specific Season Name search: ${query}`);
                     const res = await searchAnime(query);
                     if (res && res.length > 0) {
-                        console.log(`[AnimeWorld] Found matches for season name: ${query}`);
-                        // Filter results to ensure relevance
-                        const relevantRes = res.filter(c => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
+                        const relevantRes = res.filter(c => {
+                            const cTitle = c.title.toLowerCase();
+                            const sName = metadata.seasonName.toLowerCase();
+
+                            // Check if candidate title actually contains the season name
+                            // This is crucial for avoiding Prequels/generic series matching the base title
+                            if (!cTitle.includes(sName)) return false;
+
+                            // Also ensure it's generally related to the main series
+                            return checkSimilarity(c.title, title) ||
+                                checkSimilarity(c.title, originalTitle) ||
+                                checkSimilarity(c.title, query);
+                        });
 
                         if (relevantRes.length > 0) {
+                            console.log(`[AnimeWorld] Strategy 1 - Found relevance for: ${query}`);
                             candidates = relevantRes;
                             seasonNameMatch = true;
                             break;
@@ -930,11 +973,14 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
 
             if (!seasonNameMatch) {
                 for (const query of searchQueries) {
+                    console.log(`[AnimeWorld] Strategy 1 - Numeric Season search: ${query}`);
                     const res = await searchAnime(query);
                     if (res && res.length > 0) {
-                        // Filter results to ensure relevance
-                        const relevantRes = res.filter(c => checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle));
-
+                        const relevantRes = res.filter(c =>
+                            checkSimilarity(c.title, title) ||
+                            checkSimilarity(c.title, originalTitle) ||
+                            checkSimilarity(c.title, query)
+                        );
                         if (relevantRes.length > 0) {
                             candidates = relevantRes;
                             break;
@@ -1260,6 +1306,10 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
 
                 const isSim = checkSimilarity(c.title, title) ||
                     checkSimilarity(c.title, originalTitle) ||
+                    checkSimilarity(c.title, `${title} ${season}`) ||
+                    checkSimilarity(c.title, `${originalTitle} ${season}`) ||
+                    (metadata.seasonName && checkSimilarity(c.title, metadata.seasonName)) ||
+                    (metadata.seasonName && checkSimilarity(c.title, `${title} ${metadata.seasonName}`)) ||
                     (c.matchedAltTitle && checkSimilarity(c.title, c.matchedAltTitle));
 
                 if (isSim) {
@@ -1381,7 +1431,8 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
                         }
 
                         if (!isSpecific && !isSeasonNumber) {
-                            if (normMatch.includes(normSeries) || normSeries.includes(normMatch)) {
+                            const includesSeasonName = metadata.seasonName && normMatch.includes(metadata.seasonName.toLowerCase());
+                            if (!includesSeasonName && (normMatch.includes(normSeries) || normSeries.includes(normMatch))) {
                                 // console.log(`[AnimeWorld] Fuzzy match for absolute check: "${normMatch}" vs "${normSeries}"`);
                                 prioritizeAbsolute = true;
                             }

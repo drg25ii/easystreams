@@ -10,7 +10,7 @@ async function build() {
     const args = process.argv.slice(2);
     const shouldTranspile = args.includes('--transpile');
     const shouldMinify = args.includes('--minify');
-    
+
     // Filter out flags to get provider names
     const providerNames = args.filter(arg => !arg.startsWith('--'));
 
@@ -24,6 +24,8 @@ async function build() {
         }
     }
 }
+
+
 
 async function buildIndexBundle(minify = false) {
     console.log('Building index bundle...');
@@ -44,7 +46,7 @@ async function buildIndexBundle(minify = false) {
             platform: 'neutral',
             target: ['es2016'],
             format: 'cjs',
-            external: ['cheerio', 'cheerio-select'],
+            external: ['cheerio', 'cheerio-select', 'fs', 'path', 'https', 'sql.js'],
             define: {
                 'process.env.NODE_ENV': minify ? '"production"' : '"development"'
             }
@@ -57,14 +59,14 @@ async function buildIndexBundle(minify = false) {
 
 async function transpileProviders(specificFiles = [], minify = false) {
     console.log('Transpiling providers...');
-    
+
     if (!fs.existsSync(PROVIDERS_DIR)) {
         console.error('Providers directory not found!');
         return;
     }
 
     let files = fs.readdirSync(PROVIDERS_DIR).filter(f => f.endsWith('.js'));
-    
+
     if (specificFiles.length > 0) {
         files = files.filter(f => specificFiles.includes(f) || specificFiles.includes(f.replace('.js', '')));
     }
@@ -72,7 +74,7 @@ async function transpileProviders(specificFiles = [], minify = false) {
     for (const file of files) {
         const filePath = path.join(PROVIDERS_DIR, file);
         console.log(`Processing ${file}...`);
-        
+
         try {
             const result = await esbuild.build({
                 entryPoints: [filePath],
@@ -83,6 +85,7 @@ async function transpileProviders(specificFiles = [], minify = false) {
                 platform: 'neutral',
                 target: ['es2016'], // Target older ES version for Hermes compatibility
                 format: 'cjs',
+                external: ['fs', 'path', 'https', 'sql.js'],
                 define: {
                     'process.env.NODE_ENV': minify ? '"production"' : '"development"'
                 }
@@ -143,7 +146,7 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
                 // Bundle everything except potentially very large or platform-specific libs
                 // For React Native/Nuvio, we generally want to bundle crypto-js 
                 // but keep cheerio external if we want to avoid huge files (and we should avoid using it)
-                external: ['cheerio', 'cheerio-select'] 
+                external: ['cheerio', 'cheerio-select', 'fs', 'path', 'https', 'sql.js']
             });
             console.log(`✅ Built ${provider}`);
         } catch (e) {
@@ -151,5 +154,7 @@ async function buildSourceProviders(specificProviders = [], minify = false) {
         }
     }
 }
+
+
 
 build().catch(console.error);

@@ -1,9 +1,28 @@
 const TMDB_API_KEY = "68e094699525b18a70bab2f86b1fa706";
+const MAPPING_API_URL = "https://animemapping.stremio.dpdns.org";
 
 async function getTmdbFromKitsu(kitsuId) {
     try {
         const id = String(kitsuId).replace("kitsu:", "");
-        
+        let tmdbId = null;
+        let season = null;
+
+        // 1. Try Central Mapping API (Fastest and most accurate as it's updated on the edge)
+        if (MAPPING_API_URL) {
+            try {
+                const apiResponse = await fetch(`${MAPPING_API_URL}/mapping/${id}`);
+                if (apiResponse.ok) {
+                    const apiData = await apiResponse.json();
+                    if (apiData.tmdbId) {
+                        console.log(`[TMDB Helper] API Hit! Kitsu ${id} -> TMDB ${apiData.tmdbId}, Season ${apiData.season}`);
+                        return { tmdbId: apiData.tmdbId, season: apiData.season };
+                    }
+                }
+            } catch (apiErr) {
+                console.warn('[TMDB Helper] Mapping API Error:', apiErr.message);
+            }
+        }
+
         // Fetch Mappings
         const mappingResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}/mappings`);
         let mappingData = null;
@@ -11,8 +30,7 @@ async function getTmdbFromKitsu(kitsuId) {
             mappingData = await mappingResponse.json();
         }
 
-        let tmdbId = null;
-        let season = null;
+
 
         // Try to find TMDB ID from mappings
         if (mappingData && mappingData.data) {
@@ -24,7 +42,7 @@ async function getTmdbFromKitsu(kitsuId) {
                 const findUrl = `https://api.themoviedb.org/3/find/${tvdbId}?api_key=${TMDB_API_KEY}&external_source=tvdb_id`;
                 const findResponse = await fetch(findUrl);
                 const findData = await findResponse.json();
-                
+
                 if (findData.tv_results?.length > 0) tmdbId = findData.tv_results[0].id;
                 else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null };
             }
@@ -37,7 +55,7 @@ async function getTmdbFromKitsu(kitsuId) {
                     const findUrl = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${TMDB_API_KEY}&external_source=imdb_id`;
                     const findResponse = await fetch(findUrl);
                     const findData = await findResponse.json();
-                    
+
                     if (findData.tv_results?.length > 0) tmdbId = findData.tv_results[0].id;
                     else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null };
                 }
@@ -49,7 +67,7 @@ async function getTmdbFromKitsu(kitsuId) {
         const detailsResponse = await fetch(`https://kitsu.io/api/edge/anime/${id}`);
         if (!detailsResponse.ok) return null;
         const detailsData = await detailsResponse.json();
-        
+
         if (detailsData && detailsData.data && detailsData.data.attributes) {
             const attributes = detailsData.data.attributes;
             // Collect possible titles
@@ -57,45 +75,47 @@ async function getTmdbFromKitsu(kitsuId) {
             if (attributes.titles.en) titlesToTry.add(attributes.titles.en);
             if (attributes.titles.en_jp) titlesToTry.add(attributes.titles.en_jp);
             if (attributes.canonicalTitle) titlesToTry.add(attributes.canonicalTitle);
-            if (attributes.titles.ja_jp) titlesToTry.add(attributes.titles.ja_jp); 
-            
+            if (attributes.titles.ja_jp) titlesToTry.add(attributes.titles.ja_jp);
+
             // Convert to array
             const titleList = Array.from(titlesToTry);
 
             const year = attributes.startDate ? attributes.startDate.substring(0, 4) : null;
             const subtype = attributes.subtype;
-            
+
             // If we still don't have TMDB ID, search by title
             if (!tmdbId) {
                 const type = (subtype === 'movie') ? 'movie' : 'tv';
-                
+
                 for (const title of titleList) {
                     if (tmdbId) break; // Found it
                     if (!title) continue;
 
                     let searchData = { results: [] };
-                    
+
                     // First try search WITH year if available
                     if (year) {
                         let yearParam = '';
                         if (type === 'movie') yearParam = `&primary_release_year=${year}`;
                         else yearParam = `&first_air_date_year=${year}`;
-                        
-                        const searchUrlYear = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}${yearParam}`;
-                        const res = await fetch(searchUrlYear);
+
+                        const searchUrlYear = `https://api.themoviedb.org/3/find/${title}?api_key=${TMDB_API_KEY}${yearParam}`; // Wait, search url was different
+                        // Re-implementing search url correctly
+                        const searchUrlYearCorrect = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}${yearParam}`;
+                        const res = await fetch(searchUrlYearCorrect);
                         const data = await res.json();
                         if (data.results && data.results.length > 0) {
                             searchData = data;
                         }
                     }
-                    
+
                     // If no results with strict year, try without year
                     if (!searchData.results || searchData.results.length === 0) {
                         const searchUrl = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}`;
                         const searchResponse = await fetch(searchUrl);
                         searchData = await searchResponse.json();
                     }
-                    
+
                     if (searchData.results && searchData.results.length > 0) {
                         if (year) {
                             // Try to find exact year match in the results (even if we searched without year)
@@ -103,7 +123,7 @@ async function getTmdbFromKitsu(kitsuId) {
                                 const date = type === 'movie' ? r.release_date : r.first_air_date;
                                 return date && date.startsWith(year);
                             });
-                            
+
                             if (match) {
                                 tmdbId = match.id;
                             } else {
@@ -128,7 +148,7 @@ async function getTmdbFromKitsu(kitsuId) {
                     }
                 } // End for titles
             }
-            
+
             // Get best title for season heuristic
             const title = attributes.titles.en || attributes.titles.en_jp || attributes.canonicalTitle;
 
@@ -136,12 +156,12 @@ async function getTmdbFromKitsu(kitsuId) {
             if (tmdbId && subtype !== 'movie') {
                 // Heuristic to extract season number from title
                 // e.g. "My Hero Academia 2", "Attack on Titan Season 3", "Overlord II"
-                
+
                 // Explicit "Season X"
                 const seasonMatch = title.match(/Season\s*(\d+)/i) || title.match(/(\d+)(?:st|nd|rd|th)\s*Season/i);
                 if (seasonMatch) {
                     season = parseInt(seasonMatch[1]);
-                } 
+                }
                 // "Title X" (e.g. Boku no Hero Academia 2)
                 else if (title.match(/\s(\d+)$/)) {
                     season = parseInt(title.match(/\s(\d+)$/)[1]);
@@ -151,6 +171,17 @@ async function getTmdbFromKitsu(kitsuId) {
                 else if (title.match(/\sIII$/)) season = 3;
                 else if (title.match(/\sIV$/)) season = 4;
                 else if (title.match(/\sV$/)) season = 5;
+                else if (title.match(/\sVI$/)) season = 6;
+                // Other common tags
+                else if (title.includes("Final Season")) {
+                    // This is harder as we don't know the absolute number, 
+                    // but for some we might guess if it's famous. 
+                    // For now, let's stick to explicit matches.
+                }
+
+                if (season) {
+                    console.log(`[TMDB Helper] Heuristic Season detected for ${id}: Season ${season} (${title})`);
+                }
             }
         }
 
@@ -170,10 +201,10 @@ async function getSeasonEpisodeFromAbsolute(tmdbId, absoluteEpisode) {
         const data = await response.json();
 
         let totalEpisodes = 0;
-        
+
         // Sort seasons by number just in case
         const seasons = data.seasons.filter(s => s.season_number > 0).sort((a, b) => a.season_number - b.season_number);
-        
+
         for (const season of seasons) {
             if (absoluteEpisode <= totalEpisodes + season.episode_count) {
                 return {
@@ -183,7 +214,7 @@ async function getSeasonEpisodeFromAbsolute(tmdbId, absoluteEpisode) {
             }
             totalEpisodes += season.episode_count;
         }
-        
+
         // If we overflow, maybe it's in the last season or unknown
         return null;
     } catch (e) {
