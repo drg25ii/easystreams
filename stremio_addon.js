@@ -83,11 +83,24 @@ app.use((req, res, next) => {
 const FETCH_TIMEOUT = 6500; // 6.5 seconds for HTTP requests
 const STREAM_RESPONSE_TIMEOUT = 7000; // Hard cap for stream response time
 const PROVIDER_TIMEOUT = 6500; // Keep provider work below global response deadline
-const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '15000', 10) || 15000;
-const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '1000', 10) || 1000;
+const STREAM_CACHE_TTL = Number.parseInt(process.env.STREAM_CACHE_TTL_MS || '3600000', 10) || 3600000;
+const STREAM_CACHE_MAX_SIZE = Number.parseInt(process.env.STREAM_CACHE_MAX_SIZE || '50000', 10) || 50000;
+const STREAM_CACHE_MAX_BYTES = Number.parseInt(
+    process.env.STREAM_CACHE_MAX_BYTES || String(100 * 1024 * 1024),
+    10
+) || (100 * 1024 * 1024);
 
 const streamCache = new Map();
 const inFlightStreamRequests = new Map();
+let streamCacheBytes = 0;
+
+function estimateSizeBytes(value) {
+    try {
+        return Buffer.byteLength(JSON.stringify(value), 'utf8');
+    } catch {
+        return 0;
+    }
+}
 
 function cloneStreamResponse(response) {
     return {
@@ -99,6 +112,7 @@ function getCachedStreamResponse(cacheKey) {
     const entry = streamCache.get(cacheKey);
     if (!entry) return null;
     if (entry.expiresAt <= Date.now()) {
+        streamCacheBytes = Math.max(0, streamCacheBytes - (entry.sizeBytes || 0));
         streamCache.delete(cacheKey);
         return null;
     }
@@ -106,17 +120,34 @@ function getCachedStreamResponse(cacheKey) {
 }
 
 function setCachedStreamResponse(cacheKey, response) {
-    if (streamCache.size >= STREAM_CACHE_MAX_SIZE) {
+    const payloadSize = estimateSizeBytes(response);
+    if (payloadSize <= 0 || payloadSize > STREAM_CACHE_MAX_BYTES) {
+        return;
+    }
+
+    const existingEntry = streamCache.get(cacheKey);
+    if (existingEntry) {
+        streamCacheBytes = Math.max(0, streamCacheBytes - (existingEntry.sizeBytes || 0));
+        streamCache.delete(cacheKey);
+    }
+
+    while (
+        streamCache.size > 0 &&
+        (streamCache.size >= STREAM_CACHE_MAX_SIZE || (streamCacheBytes + payloadSize) > STREAM_CACHE_MAX_BYTES)
+    ) {
         const oldestKey = streamCache.keys().next().value;
-        if (oldestKey !== undefined) {
-            streamCache.delete(oldestKey);
-        }
+        if (oldestKey === undefined) break;
+        const oldestEntry = streamCache.get(oldestKey);
+        streamCacheBytes = Math.max(0, streamCacheBytes - (oldestEntry?.sizeBytes || 0));
+        streamCache.delete(oldestKey);
     }
 
     streamCache.set(cacheKey, {
         response,
-        expiresAt: Date.now() + STREAM_CACHE_TTL
+        expiresAt: Date.now() + STREAM_CACHE_TTL,
+        sizeBytes: payloadSize
     });
+    streamCacheBytes += payloadSize;
 }
 
 // Wrap global fetch to enforce timeout
