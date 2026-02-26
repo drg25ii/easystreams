@@ -13,6 +13,7 @@ async function getMetadata(id, type) {
         const normalizedType = String(type).toLowerCase();
         let tmdbId = id;
         let mappedSeason = null;
+        let mappedSeasonName = null;
 
         // Handle Kitsu ID
         if (String(id).startsWith("kitsu:")) {
@@ -20,6 +21,7 @@ async function getMetadata(id, type) {
             if (resolved && resolved.tmdbId) {
                 tmdbId = resolved.tmdbId;
                 mappedSeason = resolved.season;
+                mappedSeasonName = resolved.tmdbSeasonTitle || null;
                 console.log(`[AnimeUnity] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId} (Mapped Season: ${mappedSeason})`);
             } else {
                 console.error(`[AnimeUnity] Failed to resolve Kitsu ID ${id}`);
@@ -43,15 +45,16 @@ async function getMetadata(id, type) {
             tmdbId = results[0].id;
         }
 
-        const endpoint = normalizedType === "movie" ? "movie" : "tv";
-        const url = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`;
-
-        const response = await fetch(url);
-        if (!response.ok) return null;
+        let endpoint = normalizedType === "movie" ? "movie" : "tv";
+        let response = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+        if (!response.ok) {
+            endpoint = endpoint === "movie" ? "tv" : "movie";
+            response = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+            if (!response.ok) return null;
+        }
         // Get Alternative Titles
         let alternatives = [];
         try {
-            const endpoint = normalizedType === "movie" ? "movie" : "tv";
             const altUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/alternative_titles?api_key=${TMDB_API_KEY}`;
             const altResponse = await fetch(altUrl);
             if (altResponse.ok) {
@@ -65,7 +68,8 @@ async function getMetadata(id, type) {
         return {
             ...await response.json(),
             alternatives,
-            mappedSeason
+            mappedSeason,
+            mappedSeasonName
         };
     } catch (e) {
         console.error("[AnimeUnity] Metadata error:", e);
@@ -749,20 +753,9 @@ async function getStreams(id, type, season, episode) {
             const parsedMapped = parseInt(mappedSeason, 10);
             if (!isNaN(parsedMapped)) mappedSeason = parsedMapped;
         }
-        if (mappedSeason && metadata.seasons && Array.isArray(metadata.seasons)) {
-            const normalizedMappedSeason = normalizeSeasonInRange(mappedSeason, metadata.seasons);
-            if (normalizedMappedSeason !== mappedSeason) {
-                const seasonNumbers = metadata.seasons
-                    .map(s => s.season_number)
-                    .filter(n => Number.isInteger(n) && n > 0);
-                if (seasonNumbers.length > 0) {
-                    const minSeason = Math.min(...seasonNumbers);
-                    const maxSeason = Math.max(...seasonNumbers);
-                    console.log(`[AnimeUnity] Mapped season ${mappedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedMappedSeason} instead.`);
-                }
-                mappedSeason = normalizedMappedSeason;
-            }
-        }
+        // Do not clamp mapped season to TMDB season range:
+        // some anime have split/incorrect TMDB season indexing (e.g. only S1 present).
+        // We must preserve mappedSeason from external sources (TVDB/IMDb/Kitsu mapping API).
 
         if (mappedSeason) {
             console.log(`[AnimeUnity] Kitsu mapping indicates Season ${mappedSeason}. Overriding requested Season ${season}`);
@@ -770,20 +763,7 @@ async function getStreams(id, type, season, episode) {
         }
 
         const parsedSeason = Number.isInteger(season) ? season : parseInt(season, 10);
-        if (!isNaN(parsedSeason) && metadata.seasons && Array.isArray(metadata.seasons)) {
-            const normalizedRequestedSeason = normalizeSeasonInRange(parsedSeason, metadata.seasons);
-            if (normalizedRequestedSeason !== parsedSeason) {
-                const seasonNumbers = metadata.seasons
-                    .map(s => s.season_number)
-                    .filter(n => Number.isInteger(n) && n > 0);
-                if (seasonNumbers.length > 0) {
-                    const minSeason = Math.min(...seasonNumbers);
-                    const maxSeason = Math.max(...seasonNumbers);
-                    console.log(`[AnimeUnity] Requested season ${parsedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedRequestedSeason} instead.`);
-                }
-            }
-            season = normalizedRequestedSeason;
-        }
+        if (!isNaN(parsedSeason)) season = parsedSeason;
 
         const title = metadata.title || metadata.name;
         const originalTitle = metadata.original_title || metadata.original_name;
@@ -911,6 +891,9 @@ async function getStreams(id, type, season, episode) {
 
             // Try TMDB Season Name with priority: English, then Italian
             const seasonNames = [];
+            if (metadata.mappedSeasonName && !metadata.mappedSeasonName.match(/^Season \d+|^Stagione \d+/i)) {
+                seasonNames.push(metadata.mappedSeasonName);
+            }
 
             const seasonMetaEn = await getSeasonMetadata(metadata.id, season, "en-US");
             if (!seasonYear && seasonMetaEn && seasonMetaEn.air_date) {
@@ -933,7 +916,7 @@ async function getStreams(id, type, season, episode) {
             const uniqueSeasonNames = [...new Set(seasonNames.map(n => String(n).trim()).filter(Boolean))];
             seasonNameHints = uniqueSeasonNames;
             if (uniqueSeasonNames.length > 0) {
-                console.log(`[AnimeUnity] Found season names (priority EN->IT): ${uniqueSeasonNames.join(" | ")}`);
+                console.log(`[AnimeUnity] Found season names (priority Mapping->EN->IT): ${uniqueSeasonNames.join(" | ")}`);
             }
 
             for (const seasonName of uniqueSeasonNames) {
@@ -1375,6 +1358,39 @@ async function getStreams(id, type, season, episode) {
             } else {
                 console.log("[AnimeUnity] Discarding dub candidate due to arc/season mismatch with selected sub.");
                 bestDub = null;
+            }
+        }
+
+        if (season > 1 && Array.isArray(seasonNameHints) && seasonNameHints.length > 0) {
+            const normalize = (s) => String(s || "")
+                .toLowerCase()
+                .replace(/&#x27;|&#039;/g, "'")
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            const matchesSeasonHint = (candidate) => {
+                if (!candidate) return false;
+                const cTitle = String(candidate.title || "");
+                const cTitleEn = String(candidate.title_eng || "");
+                const cNorm = normalize(`${cTitle} ${cTitleEn}`);
+                return seasonNameHints.some((hint) => {
+                    const h = String(hint || "").trim();
+                    if (!h) return false;
+                    const hNorm = normalize(h);
+                    return checkSimilarity(cTitle, h) ||
+                        checkSimilarity(cTitleEn, h) ||
+                        (hNorm && cNorm.includes(hNorm));
+                });
+            };
+
+            const alignedSubs = subs.filter(matchesSeasonHint);
+            const alignedDubs = dubs.filter(matchesSeasonHint);
+
+            if (bestSub && !matchesSeasonHint(bestSub) && alignedSubs.length > 0) {
+                bestSub = findBestMatch(alignedSubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints }) || alignedSubs[0];
+            }
+            if (bestDub && !matchesSeasonHint(bestDub) && alignedDubs.length > 0) {
+                bestDub = findBestMatch(alignedDubs, title, originalTitle, season, metadata, { seasonYear, seasonNames: seasonNameHints }) || alignedDubs[0];
             }
         }
 

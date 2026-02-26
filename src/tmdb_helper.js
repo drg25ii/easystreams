@@ -6,6 +6,7 @@ async function resolveTmdbFromKitsu(kitsuId) {
         const id = String(kitsuId).replace("kitsu:", "");
         let tmdbId = null;
         let season = null;
+        let tmdbSeasonTitle = null;
 
         // 1. Try Central Mapping API (Fastest and most accurate as it's updated on the edge)
         if (MAPPING_API_URL) {
@@ -13,11 +14,16 @@ async function resolveTmdbFromKitsu(kitsuId) {
                 const apiResponse = await fetch(`${MAPPING_API_URL}/mapping/${id}`);
                 if (apiResponse.ok) {
                     const apiData = await apiResponse.json();
+                    if (isMeaningfulSeasonName(apiData?.seasonName)) {
+                        tmdbSeasonTitle = String(apiData.seasonName).trim();
+                    }
 
-                    // If we have TMDB ID directly, we're golden
                     if (apiData.tmdbId) {
+                        if (apiData.season && !tmdbSeasonTitle) {
+                            tmdbSeasonTitle = await getTmdbSeasonTitle(apiData.tmdbId, apiData.season);
+                        }
                         console.log(`[TMDB Helper] API Hit (TMDB)! Kitsu ${id} -> TMDB ${apiData.tmdbId}, Season ${apiData.season} (Source: ${apiData.source})`);
-                        return { tmdbId: apiData.tmdbId, season: apiData.season };
+                        return { tmdbId: apiData.tmdbId, season: apiData.season, tmdbSeasonTitle };
                     }
 
                     // NEW: If we have IMDb ID, use it to find TMDB ID immediately
@@ -27,8 +33,16 @@ async function resolveTmdbFromKitsu(kitsuId) {
                         const findResponse = await fetch(findUrl);
                         const findData = await findResponse.json();
 
-                        if (findData.tv_results?.length > 0) return { tmdbId: findData.tv_results[0].id, season: apiData.season };
-                        else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null };
+                        if (findData.tv_results?.length > 0) {
+                            if (!tmdbSeasonTitle && apiData.season) {
+                                tmdbSeasonTitle = await getTmdbSeasonTitle(findData.tv_results[0].id, apiData.season);
+                            }
+                            return { tmdbId: findData.tv_results[0].id, season: apiData.season, tmdbSeasonTitle };
+                        }
+                        else if (findData.movie_results?.length > 0) return { tmdbId: findData.movie_results[0].id, season: null, tmdbSeasonTitle };
+
+                        // Fallback: keep IMDb id so providers can resolve it later in metadata step.
+                        return { tmdbId: apiData.imdbId, season: apiData.season ?? null, tmdbSeasonTitle };
                     }
                 }
             } catch (apiErr) {
@@ -169,22 +183,28 @@ async function resolveTmdbFromKitsu(kitsuId) {
             if (tmdbId && subtype !== 'movie') {
                 // Heuristic to extract season number from title
                 // e.g. "My Hero Academia 2", "Attack on Titan Season 3", "Overlord II"
+                const lowerTitle = String(title || '').toLowerCase();
+
+                // Specials/recaps are often represented as season 0 in providers.
+                if (/\b(special|recap|ova|oav|movie)\b/i.test(lowerTitle)) {
+                    season = 0;
+                }
 
                 // Explicit "Season X"
                 const seasonMatch = title.match(/Season\s*(\d+)/i) || title.match(/(\d+)(?:st|nd|rd|th)\s*Season/i);
-                if (seasonMatch) {
+                if (!season && seasonMatch) {
                     season = parseInt(seasonMatch[1]);
                 }
                 // "Title X" (e.g. Boku no Hero Academia 2)
-                else if (title.match(/\s(\d+)$/)) {
+                else if (!season && title.match(/\s(\d+)$/)) {
                     season = parseInt(title.match(/\s(\d+)$/)[1]);
                 }
                 // Roman Numerals
-                else if (title.match(/\sII$/)) season = 2;
-                else if (title.match(/\sIII$/)) season = 3;
-                else if (title.match(/\sIV$/)) season = 4;
-                else if (title.match(/\sV$/)) season = 5;
-                else if (title.match(/\sVI$/)) season = 6;
+                else if (!season && title.match(/\sII$/)) season = 2;
+                else if (!season && title.match(/\sIII$/)) season = 3;
+                else if (!season && title.match(/\sIV$/)) season = 4;
+                else if (!season && title.match(/\sV$/)) season = 5;
+                else if (!season && title.match(/\sVI$/)) season = 6;
                 // Other common tags
                 else if (title.includes("Final Season")) {
                     // This is harder as we don't know the absolute number, 
@@ -198,12 +218,106 @@ async function resolveTmdbFromKitsu(kitsuId) {
             }
         }
 
-        return { tmdbId, season };
+        if (tmdbId && season && !tmdbSeasonTitle) {
+            tmdbSeasonTitle = await getTmdbSeasonTitle(tmdbId, season);
+        }
+        return { tmdbId, season, tmdbSeasonTitle };
 
     } catch (e) {
         console.error("[TMDB Helper] Kitsu resolve error:", e);
         return null;
     }
+}
+
+function isMeaningfulSeasonName(name) {
+    const s = String(name || '').trim();
+    if (!s) return false;
+    if (/^Season\s+\d+$/i.test(s)) return false;
+    if (/^Stagione\s+\d+$/i.test(s)) return false;
+    return true;
+}
+
+async function getTmdbSeasonTitle(tmdbId, season, language = "en-US") {
+    try {
+        const id = String(tmdbId || "").trim();
+        const s = parseInt(season, 10);
+        if (!id || !s) return null;
+
+        const primaryUrl = `https://api.themoviedb.org/3/tv/${id}/season/${s}?api_key=${TMDB_API_KEY}&language=${encodeURIComponent(language)}`;
+        const primaryResponse = await fetch(primaryUrl);
+        if (primaryResponse.ok) {
+            const primaryData = await primaryResponse.json();
+            if (primaryData?.name && !/^Season\s+\d+$/i.test(primaryData.name)) {
+                return String(primaryData.name).trim();
+            }
+        }
+
+        const fallbackUrl = `https://api.themoviedb.org/3/tv/${id}/season/${s}?api_key=${TMDB_API_KEY}&language=it-IT`;
+        const fallbackResponse = await fetch(fallbackUrl);
+        if (!fallbackResponse.ok) return null;
+        const fallbackData = await fallbackResponse.json();
+        if (fallbackData?.name && !/^Stagione\s+\d+$/i.test(fallbackData.name)) {
+            return String(fallbackData.name).trim();
+        }
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function getTvdbTitle(tvdbId) {
+    try {
+        const id = String(tvdbId || '').trim();
+        if (!id) return null;
+        const url = `https://api.tvmaze.com/lookup/shows?thetvdb=${encodeURIComponent(id)}`;
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        const data = await response.json();
+        const baseName = data?.name || null;
+        const mazeId = data?.id;
+
+        // Prefer EN/latin aliases when available; fallback to baseName.
+        if (mazeId) {
+            try {
+                const akaResponse = await fetch(`https://api.tvmaze.com/shows/${mazeId}/akas`);
+                if (akaResponse.ok) {
+                    const akas = await akaResponse.json();
+                    const preferred = pickPreferredEnglishAlias(akas);
+                    if (preferred) return preferred;
+                }
+            } catch (_) {
+                // Ignore alias lookup failures and fallback gracefully.
+            }
+        }
+
+        return baseName;
+    } catch (e) {
+        return null;
+    }
+}
+
+function pickPreferredEnglishAlias(akas) {
+    if (!Array.isArray(akas) || akas.length === 0) return null;
+
+    const isLatin = (s) => /[A-Za-z]/.test(String(s || ''));
+    const score = (a) => {
+        const name = String(a?.name || '');
+        const code = String(a?.country?.code || '').toUpperCase();
+        let points = 0;
+        if (['US', 'GB', 'CA', 'AU'].includes(code)) points += 4;
+        if (isLatin(name)) points += 3;
+        if (/english/i.test(String(a?.country?.name || ''))) points += 2;
+        // Slight preference for concise aliases.
+        if (name.length > 0 && name.length <= 80) points += 1;
+        return points;
+    };
+
+    const sorted = [...akas]
+        .filter(a => a && a.name)
+        .sort((a, b) => score(b) - score(a));
+
+    const best = sorted[0];
+    return best ? String(best.name).trim() : null;
 }
 
 async function getTmdbFromKitsu(kitsuId) {
@@ -267,4 +381,4 @@ function isAnime(metadata) {
     return hasAsianCountry || hasAsianLang;
 }
 
-module.exports = { getTmdbFromKitsu, getSeasonEpisodeFromAbsolute, isAnime };
+module.exports = { getTmdbFromKitsu, getSeasonEpisodeFromAbsolute, isAnime, getTvdbTitle, pickPreferredEnglishAlias };

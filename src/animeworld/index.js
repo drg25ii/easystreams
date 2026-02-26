@@ -12,6 +12,7 @@ async function getMetadata(id, type) {
         const normalizedType = String(type).toLowerCase();
         let tmdbId = id;
         let mappedSeason = null;
+        let mappedSeasonName = null;
 
         // Handle Kitsu ID
         if (String(id).startsWith("kitsu:")) {
@@ -19,6 +20,7 @@ async function getMetadata(id, type) {
             if (resolved && resolved.tmdbId) {
                 tmdbId = resolved.tmdbId;
                 mappedSeason = resolved.season;
+                mappedSeasonName = resolved.tmdbSeasonTitle || null;
                 console.log(`[AnimeWorld] Resolved Kitsu ID ${id} to TMDB ID ${tmdbId} (Mapped Season: ${mappedSeason})`);
             } else {
                 console.error(`[AnimeWorld] Failed to resolve Kitsu ID ${id}`);
@@ -42,15 +44,19 @@ async function getMetadata(id, type) {
             tmdbId = results[0].id;
         }
 
-        // Get Details
-        const detailsUrl = `https://api.themoviedb.org/3/${normalizedType === "movie" ? "movie" : "tv"}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`;
-        const detailsResponse = await fetch(detailsUrl);
-        if (!detailsResponse.ok) return null;
+        // Get Details (fallback movie <-> tv when caller type is mismatched)
+        let endpoint = normalizedType === "movie" ? "movie" : "tv";
+        let detailsResponse = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+        if (!detailsResponse.ok) {
+            endpoint = endpoint === "movie" ? "tv" : "movie";
+            detailsResponse = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${TMDB_API_KEY}&language=it-IT`);
+            if (!detailsResponse.ok) return null;
+        }
         const details = await detailsResponse.json();
 
         // Get External IDs (IMDb) if needed
         let imdb_id = details.imdb_id;
-        if (!imdb_id && normalizedType === "tv") {
+        if (!imdb_id && endpoint === "tv") {
             const externalUrl = `https://api.themoviedb.org/3/tv/${tmdbId}/external_ids?api_key=${TMDB_API_KEY}`;
             const extResponse = await fetch(externalUrl);
             if (extResponse.ok) {
@@ -62,7 +68,7 @@ async function getMetadata(id, type) {
         // Get Alternative Titles
         let alternatives = [];
         try {
-            const altUrl = `https://api.themoviedb.org/3/${normalizedType === "movie" ? "movie" : "tv"}/${tmdbId}/alternative_titles?api_key=${TMDB_API_KEY}`;
+            const altUrl = `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/alternative_titles?api_key=${TMDB_API_KEY}`;
             const altResponse = await fetch(altUrl);
             if (altResponse.ok) {
                 const altData = await altResponse.json();
@@ -73,7 +79,7 @@ async function getMetadata(id, type) {
         }
 
         // Extract specific season name if mappedSeason is present
-        let seasonName = null;
+        let seasonName = mappedSeasonName;
         if (mappedSeason && details.seasons) {
             const targetSeason = details.seasons.find(s => s.season_number === mappedSeason);
             if (targetSeason && targetSeason.name && !targetSeason.name.includes("Stagione") && !targetSeason.name.includes("Season")) {
@@ -646,6 +652,23 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             return anyMatch;
         }
 
+        // Last fallback for specials/movies:
+        // prefer entries that clearly look like "Title 0 / Movie / Film / Special"
+        const seasonZeroLike = candidates.find(c => {
+            const raw = String(c.title || "");
+            const lower = raw.toLowerCase();
+            const hasSpecialToken = /\b(special|ova|oav|movie|film|zero|0)\b/i.test(lower);
+            if (!hasSpecialToken) return false;
+
+            const containsBaseTitle =
+                (normTitle && lower.includes(normTitle)) ||
+                (normOriginal && lower.includes(normOriginal));
+
+            const looselyRelevant = isLooselyRelevant(raw, [title, originalTitle].filter(Boolean));
+            return containsBaseTitle || looselyRelevant;
+        });
+        if (seasonZeroLike) return seasonZeroLike;
+
         console.log("[AnimeWorld] No season 0 match found passing similarity check");
         return null;
     }
@@ -1116,20 +1139,9 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             const parsedMapped = parseInt(mappedSeason, 10);
             if (!isNaN(parsedMapped)) mappedSeason = parsedMapped;
         }
-        if (mappedSeason && metadata.seasons && Array.isArray(metadata.seasons)) {
-            const normalizedMappedSeason = normalizeSeasonInRange(mappedSeason, metadata.seasons);
-            if (normalizedMappedSeason !== mappedSeason) {
-                const seasonNumbers = metadata.seasons
-                    .map(s => s.season_number)
-                    .filter(n => Number.isInteger(n) && n > 0);
-                if (seasonNumbers.length > 0) {
-                    const minSeason = Math.min(...seasonNumbers);
-                    const maxSeason = Math.max(...seasonNumbers);
-                    console.log(`[AnimeWorld] Mapped season ${mappedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedMappedSeason} instead.`);
-                }
-                mappedSeason = normalizedMappedSeason;
-            }
-        }
+        // Do not clamp mapped season to TMDB season range:
+        // some anime have split/incorrect TMDB season indexing (e.g. only S1 present).
+        // Preserve mappedSeason from external sources (TVDB/IMDb/Kitsu mapping API).
 
         if (mappedSeason) {
             console.log(`[AnimeWorld] Kitsu mapping indicates Season ${mappedSeason}. Overriding requested Season ${season}`);
@@ -1137,20 +1149,7 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
         }
 
         const parsedSeason = Number.isInteger(season) ? season : parseInt(season, 10);
-        if (!isNaN(parsedSeason) && metadata.seasons && Array.isArray(metadata.seasons)) {
-            const normalizedRequestedSeason = normalizeSeasonInRange(parsedSeason, metadata.seasons);
-            if (normalizedRequestedSeason !== parsedSeason) {
-                const seasonNumbers = metadata.seasons
-                    .map(s => s.season_number)
-                    .filter(n => Number.isInteger(n) && n > 0);
-                if (seasonNumbers.length > 0) {
-                    const minSeason = Math.min(...seasonNumbers);
-                    const maxSeason = Math.max(...seasonNumbers);
-                    console.log(`[AnimeWorld] Requested season ${parsedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedRequestedSeason} instead.`);
-                }
-            }
-            season = normalizedRequestedSeason;
-        }
+        if (!isNaN(parsedSeason)) season = parsedSeason;
 
         const title = metadata.title || metadata.name;
         const originalTitle = metadata.original_title || metadata.original_name;
@@ -1217,7 +1216,9 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             const searchQueries = [
                 `${title} Special`,
                 `${title} OAV`,
-                `${title} Movie`
+                `${title} Movie`,
+                `${title} 0`,
+                `${title} 0 Movie`
             ];
 
             for (const query of searchQueries) {
@@ -1977,6 +1978,71 @@ async function getStreams(id, type, season, episode, providedMetadata = null) {
             } else {
                 console.log("[AnimeWorld] Discarding dub candidate due to arc/season mismatch with selected sub.");
                 bestDub = null;
+            }
+        }
+
+        if (season > 1) {
+            const hintList = [...new Set([seasonName, ...(seasonNameCandidates || [])].map(x => String(x || "").trim()).filter(Boolean))];
+            if (hintList.length > 0) {
+                const normalize = (s) => String(s || "")
+                    .toLowerCase()
+                    .replace(/&#x27;|&#039;/g, "'")
+                    .replace(/[^a-z0-9\s]/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                const tokenize = (s) => normalize(s).split(/\s+/).filter(Boolean);
+                const baseTokenSet = new Set([
+                    ...tokenize(title),
+                    ...tokenize(originalTitle)
+                ]);
+                const genericTokens = new Set(["season", "stagione", "part", "parte", "the", "and", "dei", "degli", "della"]);
+                const matchesSeasonHint = (candidate) => {
+                    if (!candidate) return false;
+                    const cTitle = String(candidate.title || "");
+                    const cNorm = normalize(cTitle);
+                    return hintList.some((hint) => {
+                        const hNorm = normalize(hint);
+                        if (!hNorm) return false;
+                        if (cNorm.includes(hNorm)) return true;
+
+                        // Require at least one distinctive token from season hint
+                        // (token not already in base series title and not generic).
+                        const distinctive = tokenize(hNorm).filter(t =>
+                            t.length >= 4 &&
+                            !baseTokenSet.has(t) &&
+                            !genericTokens.has(t)
+                        );
+                        if (distinctive.length === 0) return false;
+                        return distinctive.some(t => cNorm.includes(t));
+                    });
+                };
+
+                const alignedSubs = subs.filter(matchesSeasonHint);
+                const alignedDubs = dubs.filter(matchesSeasonHint);
+
+                if (bestSub && !matchesSeasonHint(bestSub) && alignedSubs.length > 0) {
+                    bestSub = findBestMatch(alignedSubs, title, originalTitle, season, metadata, {
+                        bypassSeasonCheck: seasonNameMatch,
+                        seasonName,
+                        seasonYear
+                    }) || alignedSubs[0];
+                }
+                if (bestDub && !matchesSeasonHint(bestDub) && alignedDubs.length > 0) {
+                    bestDub = findBestMatch(alignedDubs, title, originalTitle, season, metadata, {
+                        bypassSeasonCheck: seasonNameMatch,
+                        seasonName,
+                        seasonYear
+                    }) || alignedDubs[0];
+                }
+
+                if (bestSub && !matchesSeasonHint(bestSub)) {
+                    console.log("[AnimeWorld] Discarding SUB candidate not aligned with season-name hints.");
+                    bestSub = null;
+                }
+                if (bestDub && !matchesSeasonHint(bestDub)) {
+                    console.log("[AnimeWorld] Discarding DUB candidate not aligned with season-name hints.");
+                    bestDub = null;
+                }
             }
         }
 
