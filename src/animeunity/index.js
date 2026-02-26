@@ -109,6 +109,24 @@ function calculateAbsoluteEpisode(metadata, season, episode) {
     return absoluteEpisode;
 }
 
+function normalizeSeasonInRange(season, seasons) {
+    if (!Number.isInteger(season) || season <= 0 || !Array.isArray(seasons)) return season;
+
+    const seasonNumbers = seasons
+        .map(s => s.season_number)
+        .filter(n => Number.isInteger(n) && n > 0);
+
+    if (seasonNumbers.length === 0 || seasonNumbers.includes(season)) return season;
+
+    const minSeason = Math.min(...seasonNumbers);
+    const maxSeason = Math.max(...seasonNumbers);
+    const shouldClampHigh = season > (maxSeason + 1);
+    const shouldClampLow = season < (minSeason - 1);
+
+    if (!shouldClampHigh && !shouldClampLow) return season;
+    return shouldClampHigh ? maxSeason : minSeason;
+}
+
 // Helper for similarity check
 const checkSimilarity = (candTitle, targetTitle) => {
     if (!targetTitle) return false;
@@ -138,6 +156,61 @@ const checkSimilarity = (candTitle, targetTitle) => {
     // Require at least 50% of target words to be in candidate
     return score >= 0.5;
 };
+
+function tokenizeForPairing(text) {
+    const normalized = String(text || "")
+        .toLowerCase()
+        .replace(/\(ita\)|\(sub ita\)|\[ita\]|\[sub ita\]/g, " ")
+        .replace(/&#x27;|&#039;/g, "'")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    if (!normalized) return [];
+
+    const stopWords = new Set([
+        "the", "a", "an", "and", "or", "of", "to", "in", "on", "at", "by", "for", "with",
+        "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "o", "di", "da", "con",
+        "season", "stagione", "part", "parte", "movie", "film", "tv", "ita", "sub", "arc", "hen"
+    ]);
+
+    return normalized
+        .split(" ")
+        .filter(t => t.length > 2 && !stopWords.has(t));
+}
+
+function areCoherentCandidates(a, b, title, originalTitle) {
+    if (!a || !b) return true;
+
+    const aTitle = (a.title || a.title_eng || "").trim();
+    const bTitle = (b.title || b.title_eng || "").trim();
+    if (!aTitle || !bTitle) return true;
+
+    const normalize = (str) => String(str || "")
+        .toLowerCase()
+        .replace(/\(ita\)|\(sub ita\)|\[ita\]|\[sub ita\]/g, " ")
+        .replace(/&#x27;|&#039;/g, "'")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const aNorm = normalize(aTitle);
+    const bNorm = normalize(bTitle);
+    if (!aNorm || !bNorm) return true;
+    if (aNorm === bNorm) return true;
+
+    if (!checkSimilarity(aTitle, bTitle) && !checkSimilarity(bTitle, aTitle)) return false;
+
+    const baseTokens = new Set([
+        ...tokenizeForPairing(title || ""),
+        ...tokenizeForPairing(originalTitle || "")
+    ]);
+
+    const aSpecific = tokenizeForPairing(aTitle).filter(t => !baseTokens.has(t));
+    const bSpecific = tokenizeForPairing(bTitle).filter(t => !baseTokens.has(t));
+
+    if (aSpecific.length === 0 || bSpecific.length === 0) return true;
+    return aSpecific.some(t => bSpecific.includes(t));
+}
 
 function findBestMatch(candidates, title, originalTitle, season, metadata, options = {}) {
     if (!candidates || candidates.length === 0) return null;
@@ -379,6 +452,45 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     // If season > 1, we expect the title to potentially differ
     if (season > 1) {
         const seasonStr = String(season);
+        const normalizeCandidateTitle = (candidate) => String(candidate.title || candidate.title_eng || "")
+            .toLowerCase()
+            .replace(/\s*\(ita\)\s*$/i, "")
+            .replace(/&#x27;|&#039;/g, "'")
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const baseTitleNorm = String(title || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const baseOriginalNorm = String(originalTitle || "")
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        const isBaseEntry = (candidate) => {
+            const cNorm = normalizeCandidateTitle(candidate);
+            return cNorm === baseTitleNorm || (baseOriginalNorm && cNorm === baseOriginalNorm);
+        };
+        const hasSpecificSeasonMarkers = (candidate) => {
+            const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.toLowerCase();
+            if (/season|stagione|part|parte|\b\d+\b/.test(raw)) return true;
+            if (/\b(arc|saga|chapter|cour)\b|\b\w+(?:-|\s)?hen\b/.test(raw)) return true;
+            if (/final\s*season/i.test(raw)) return true;
+            return false;
+        };
+        const sortSeasonSpecific = (list) => {
+            return [...list].sort((a, b) => {
+                const aRaw = `${a.title || ""} ${a.title_eng || ""}`.toLowerCase();
+                const bRaw = `${b.title || ""} ${b.title_eng || ""}`.toLowerCase();
+                const aHasPart = /part\s*\d+/i.test(aRaw);
+                const bHasPart = /part\s*\d+/i.test(bRaw);
+                if (aHasPart !== bHasPart) return aHasPart ? 1 : -1;
+                return (a.title || a.title_eng || "").length - (b.title || b.title_eng || "").length;
+            });
+        };
+        const seasonSpecificCandidates = filteredCandidates.filter(c => !isBaseEntry(c) && hasSpecificSeasonMarkers(c));
 
         // Check for numeric suffix or "Season X"
         const numberMatch = filteredCandidates.find(c => {
@@ -402,27 +514,13 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             if (romanMatch) return romanMatch;
         }
 
-        // Fallback: Check if we have the exact base title match
-        // This handles long-running series like One Piece where all seasons are in one entry
-        const baseMatch = filteredCandidates.find(c => {
-            const t = (c.title || "").toLowerCase().trim();
-            const te = (c.title_eng || "").toLowerCase().trim();
-            const tClean = t.replace(/\s*\(ita\)$/i, "").trim();
-            const teClean = te.replace(/\s*\(ita\)$/i, "").trim();
-
-            // Check exact match with title or original title
-            return t === normTitle || te === normTitle || tClean === normTitle || teClean === normTitle ||
-                (normOriginal && (t === normOriginal || te === normOriginal || tClean === normOriginal || teClean === normOriginal));
-        });
-
-        if (baseMatch) {
-            console.log(`[AnimeUnity] Found base title match for Season ${season}: ${baseMatch.title || baseMatch.title_eng}`);
-            return baseMatch;
-        }
-
         // If candidates were narrowed by season year, trust the best remaining season-era entry.
+        // If we have explicit non-base season entries, prioritize them over base-title matches.
         if (appliedSeasonYearFilter && filteredCandidates.length > 0) {
-            const seasonYearMatch = filteredCandidates.find(c => {
+            const seasonPool = seasonSpecificCandidates.length > 0
+                ? sortSeasonSpecific(seasonSpecificCandidates)
+                : filteredCandidates;
+            const seasonYearMatch = seasonPool.find(c => {
                 if ((checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title)) ||
                     (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
                 if (metadata.alternatives) {
@@ -431,7 +529,36 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                 return false;
             });
             if (seasonYearMatch) return seasonYearMatch;
-            return filteredCandidates[0];
+            return seasonPool[0];
+        }
+
+        if (seasonSpecificCandidates.length > 0) {
+            const sortedSpecific = sortSeasonSpecific(seasonSpecificCandidates);
+            const specificMatch = sortedSpecific.find(c => {
+                if ((checkSimilarity(c.title, title) || checkSimilarity(c.title_eng, title)) ||
+                    (checkSimilarity(c.title, originalTitle) || checkSimilarity(c.title_eng, originalTitle))) return true;
+                if (metadata.alternatives) {
+                    return metadata.alternatives.some(alt => (checkSimilarity(c.title, alt.title) || checkSimilarity(c.title_eng, alt.title)));
+                }
+                return false;
+            });
+            if (specificMatch) return specificMatch;
+            return sortedSpecific[0];
+        }
+
+        // Last fallback for long-running shows that keep one base entry
+        const baseMatch = filteredCandidates.find(c => {
+            const t = (c.title || "").toLowerCase().trim();
+            const te = (c.title_eng || "").toLowerCase().trim();
+            const tClean = t.replace(/\s*\(ita\)$/i, "").trim();
+            const teClean = te.replace(/\s*\(ita\)$/i, "").trim();
+            return t === normTitle || te === normTitle || tClean === normTitle || teClean === normTitle ||
+                (normOriginal && (t === normOriginal || te === normOriginal || tClean === normOriginal || teClean === normOriginal));
+        });
+
+        if (baseMatch) {
+            console.log(`[AnimeUnity] Found base title match for Season ${season}: ${baseMatch.title || baseMatch.title_eng}`);
+            return baseMatch;
         }
     } else {
         // Season 1: Try to avoid titles with numbers at the end (likely sequels)
@@ -559,9 +686,45 @@ async function getStreams(id, type, season, episode) {
             return [];
         }
 
-        if (metadata.mappedSeason) {
-            console.log(`[AnimeUnity] Kitsu mapping indicates Season ${metadata.mappedSeason}. Overriding requested Season ${season}`);
-            season = metadata.mappedSeason;
+        let mappedSeason = metadata.mappedSeason;
+        if (mappedSeason !== null && mappedSeason !== undefined) {
+            const parsedMapped = parseInt(mappedSeason, 10);
+            if (!isNaN(parsedMapped)) mappedSeason = parsedMapped;
+        }
+        if (mappedSeason && metadata.seasons && Array.isArray(metadata.seasons)) {
+            const normalizedMappedSeason = normalizeSeasonInRange(mappedSeason, metadata.seasons);
+            if (normalizedMappedSeason !== mappedSeason) {
+                const seasonNumbers = metadata.seasons
+                    .map(s => s.season_number)
+                    .filter(n => Number.isInteger(n) && n > 0);
+                if (seasonNumbers.length > 0) {
+                    const minSeason = Math.min(...seasonNumbers);
+                    const maxSeason = Math.max(...seasonNumbers);
+                    console.log(`[AnimeUnity] Mapped season ${mappedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedMappedSeason} instead.`);
+                }
+                mappedSeason = normalizedMappedSeason;
+            }
+        }
+
+        if (mappedSeason) {
+            console.log(`[AnimeUnity] Kitsu mapping indicates Season ${mappedSeason}. Overriding requested Season ${season}`);
+            season = mappedSeason;
+        }
+
+        const parsedSeason = Number.isInteger(season) ? season : parseInt(season, 10);
+        if (!isNaN(parsedSeason) && metadata.seasons && Array.isArray(metadata.seasons)) {
+            const normalizedRequestedSeason = normalizeSeasonInRange(parsedSeason, metadata.seasons);
+            if (normalizedRequestedSeason !== parsedSeason) {
+                const seasonNumbers = metadata.seasons
+                    .map(s => s.season_number)
+                    .filter(n => Number.isInteger(n) && n > 0);
+                if (seasonNumbers.length > 0) {
+                    const minSeason = Math.min(...seasonNumbers);
+                    const maxSeason = Math.max(...seasonNumbers);
+                    console.log(`[AnimeUnity] Requested season ${parsedSeason} is out of TMDB range (${minSeason}-${maxSeason}). Using ${normalizedRequestedSeason} instead.`);
+                }
+            }
+            season = normalizedRequestedSeason;
         }
 
         const title = metadata.title || metadata.name;
@@ -740,6 +903,20 @@ async function getStreams(id, type, season, episode) {
                     }
                 }
 
+                // Remove localized movie words and punctuation to recover base searchable title
+                // e.g. "Jujutsu kaisen 0 - Il film" -> "Jujutsu kaisen 0"
+                const strippedMovieTitle = title
+                    .replace(/\b(il|lo|la|the)\b/gi, " ")
+                    .replace(/\b(movie|film)\b/gi, " ")
+                    .replace(/[:\-]/g, " ")
+                    .replace(/\s+/g, " ")
+                    .trim();
+                if (strippedMovieTitle.length > 3 && strippedMovieTitle.toLowerCase() !== title.toLowerCase()) {
+                    console.log(`[AnimeUnity] Stripped movie title search: ${strippedMovieTitle}`);
+                    const strippedRes = await searchAnime(strippedMovieTitle);
+                    if (strippedRes && strippedRes.length > 0) candidates = candidates.concat(strippedRes);
+                }
+
                 // Remove duplicates
                 candidates = candidates.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
             }
@@ -771,7 +948,7 @@ async function getStreams(id, type, season, episode) {
         if ((!candidates || candidates.length === 0) && metadata.alternatives) {
             const altTitles = metadata.alternatives
                 .map(t => t.title)
-                .filter(t => /^[a-zA-Z0-9\s\-\.\:\(\)]+$/.test(t)) // Only Latin chars
+                .filter(t => /^[a-zA-Z0-9\s\-\.\:\(\)!'&]+$/.test(t)) // Only Latin-ish chars + common punctuation
                 .filter(t => t !== title && t !== originalTitle);
 
             const uniqueAlts = [...new Set(altTitles)];
@@ -877,6 +1054,153 @@ async function getStreams(id, type, season, episode) {
                 const newDubs = dubRes.filter(c => (c.title || "").includes("(ITA)") || (c.title_eng || "").includes("(ITA)"));
                 const betterDub = findBestMatch(newDubs, title, originalTitle, season, metadata, { seasonYear });
                 if (betterDub) bestDub = betterDub;
+            }
+        }
+
+        if (season > 1) {
+            const normalizeCandidateTitle = (candidate) => String(candidate.title || candidate.title_eng || "")
+                .toLowerCase()
+                .replace(/\s*\(ita\)\s*$/i, "")
+                .replace(/&#x27;|&#039;/g, "'")
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            const baseTitleNorm = String(title || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            const baseOriginalNorm = String(originalTitle || "")
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            const isBaseEntry = (candidate) => {
+                const cNorm = normalizeCandidateTitle(candidate);
+                return cNorm === baseTitleNorm || (baseOriginalNorm && cNorm === baseOriginalNorm);
+            };
+            const hasSeasonMarkers = (candidate) => {
+                const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.toLowerCase();
+                if (/season|stagione|part|parte|\b\d+\b/.test(raw)) return true;
+                if (/\b(arc|saga|chapter|cour)\b|\b\w+(?:-|\s)?hen\b/.test(raw)) return true;
+                if (/final\s*season/i.test(raw)) return true;
+                return false;
+            };
+            const isRelevantCandidate = (candidate) => {
+                if ((checkSimilarity(candidate.title, title) || checkSimilarity(candidate.title_eng, title)) ||
+                    (checkSimilarity(candidate.title, originalTitle) || checkSimilarity(candidate.title_eng, originalTitle))) return true;
+                if (metadata.alternatives) {
+                    const altSimilarity = metadata.alternatives.some(alt =>
+                        checkSimilarity(candidate.title, alt.title) || checkSimilarity(candidate.title_eng, alt.title)
+                    );
+                    if (altSimilarity) return true;
+                }
+
+                const baseTokens = new Set([
+                    ...tokenizeForPairing(title || ""),
+                    ...tokenizeForPairing(originalTitle || ""),
+                    ...(metadata.alternatives || []).slice(0, 30).flatMap(alt => tokenizeForPairing(alt.title || ""))
+                ]);
+                const candidateTokens = [
+                    ...tokenizeForPairing(candidate.title || ""),
+                    ...tokenizeForPairing(candidate.title_eng || "")
+                ];
+                if (candidateTokens.some(t => baseTokens.has(t))) return true;
+
+                return false;
+            };
+            const seasonTokenRegex = new RegExp(`\\b${season}\\b|season\\s*${season}|stagione\\s*${season}|part\\s*${season}|parte\\s*${season}`, "i");
+            const getSeasonTokenScore = (candidate) => {
+                const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`;
+                if (!seasonTokenRegex.test(raw)) return 0;
+                if (/part\s*\d+/i.test(raw)) return 1;
+                return 2;
+            };
+            const getYearDiff = (candidate) => {
+                if (!seasonYear || !candidate || !candidate.date) return Number.MAX_SAFE_INTEGER;
+                const yearMatch = String(candidate.date).match(/(\d{4})/);
+                if (!yearMatch) return Number.MAX_SAFE_INTEGER;
+                const y = parseInt(yearMatch[1], 10);
+                if (isNaN(y)) return Number.MAX_SAFE_INTEGER;
+                return Math.abs(y - seasonYear);
+            };
+            const isMovieLikeCandidate = (candidate) => {
+                const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.toLowerCase();
+                if (/\b(movie|film|special|ova|oav)\b/.test(raw)) return true;
+                const cType = String(candidate.type || "").toLowerCase();
+                return cType === "movie" || cType === "special" || cType === "ova";
+            };
+            const pickSeasonSpecific = (current, list) => {
+                if (!list || list.length === 0) return current;
+                const specificPool = list.filter(c => {
+                    if (isBaseEntry(c) || !hasSeasonMarkers(c) || !isRelevantCandidate(c)) return false;
+                    if (!isMovie && isMovieLikeCandidate(c)) return false;
+                    return true;
+                });
+                if (specificPool.length === 0) return current;
+
+                const ranked = [...specificPool].sort((a, b) => {
+                    const aRaw = `${a.title || ""} ${a.title_eng || ""}`.toLowerCase();
+                    const bRaw = `${b.title || ""} ${b.title_eng || ""}`.toLowerCase();
+                    const aHasPart = /part\s*\d+/i.test(aRaw);
+                    const bHasPart = /part\s*\d+/i.test(bRaw);
+                    if (aHasPart !== bHasPart) return aHasPart ? 1 : -1;
+
+                    const tokenScoreA = getSeasonTokenScore(a);
+                    const tokenScoreB = getSeasonTokenScore(b);
+                    if (tokenScoreA !== tokenScoreB) return tokenScoreB - tokenScoreA;
+
+                    const diffA = getYearDiff(a);
+                    const diffB = getYearDiff(b);
+                    if (diffA !== diffB) return diffA - diffB;
+
+                    const scoreA = Math.max(
+                        checkSimilarity(a.title, `${title} ${season}`) ? 1 : 0,
+                        checkSimilarity(a.title_eng, `${title} ${season}`) ? 1 : 0
+                    );
+                    const scoreB = Math.max(
+                        checkSimilarity(b.title, `${title} ${season}`) ? 1 : 0,
+                        checkSimilarity(b.title_eng, `${title} ${season}`) ? 1 : 0
+                    );
+                    if (scoreA !== scoreB) return scoreB - scoreA;
+
+                    return (a.title || a.title_eng || "").length - (b.title || b.title_eng || "").length;
+                });
+
+                if (!current) return ranked[0];
+                if (!isRelevantCandidate(current)) return ranked[0];
+                if (isBaseEntry(current) || !hasSeasonMarkers(current)) return ranked[0];
+
+                const curRaw = `${current.title || ""} ${current.title_eng || ""}`.toLowerCase();
+                const currentHasPart = /part\s*\d+/i.test(curRaw);
+                const topRaw = `${ranked[0].title || ""} ${ranked[0].title_eng || ""}`.toLowerCase();
+                const topHasPart = /part\s*\d+/i.test(topRaw);
+                if (currentHasPart && !topHasPart) return ranked[0];
+                if (getSeasonTokenScore(current) < getSeasonTokenScore(ranked[0])) return ranked[0];
+
+                return current;
+            };
+
+            bestSub = pickSeasonSpecific(bestSub, subs);
+            bestDub = pickSeasonSpecific(bestDub, dubs);
+
+            if (bestSub && bestDub) {
+                const subIsSpecific = !isBaseEntry(bestSub) && hasSeasonMarkers(bestSub);
+                const dubIsBase = isBaseEntry(bestDub);
+                if (subIsSpecific && dubIsBase) {
+                    bestDub = null;
+                }
+            }
+        }
+
+        if (bestSub && bestDub && !areCoherentCandidates(bestSub, bestDub, title, originalTitle)) {
+            const compatibleDubs = dubs.filter(c => areCoherentCandidates(bestSub, c, title, originalTitle));
+            if (compatibleDubs.length > 0) {
+                const alignedDub = findBestMatch(compatibleDubs, title, originalTitle, season, metadata, { seasonYear });
+                bestDub = alignedDub || compatibleDubs[0];
+            } else {
+                console.log("[AnimeUnity] Discarding dub candidate due to arc/season mismatch with selected sub.");
+                bestDub = null;
             }
         }
 
@@ -1051,6 +1375,7 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = f
 
         const streams = [];
         const labelSuffix = langTag ? ` [${langTag}]` : "";
+        const resolvedEpisodeNumber = targetEpisode.number || episodeNumber || 1;
 
         // Helper to extract quality
         const extractQuality = (str) => {
@@ -1079,7 +1404,7 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = f
                 }
 
                 // Ensure anime.title is not null/undefined
-                const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
+                const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${resolvedEpisodeNumber}${labelSuffix}`;
 
                 streams.push({
                     name: "AnimeUnity" + labelSuffix,
@@ -1113,7 +1438,7 @@ async function getEpisodeStreams(anime, episodeNumber, langTag = "", isMovie = f
                         const vixStreams = await extractVixCloud(embedUrl);
                         if (vixStreams && vixStreams.length > 0) {
                             // Ensure anime.title is not null/undefined
-                            const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${episodeNumber}${labelSuffix}`;
+                            const displayTitle = (anime.title || anime.title_eng || "Unknown Title") + ` - Ep ${resolvedEpisodeNumber}${labelSuffix}`;
 
                             streams.push(...vixStreams.map(s => ({
                                 ...s,
