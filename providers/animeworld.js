@@ -448,7 +448,7 @@ var require_formatter = __commonJS({
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
         behaviorHints.headers = finalHeaders;
-        behaviorHints.notWebReady = true;
+        behaviorHints.notWebReady = false;
       }
       const finalName = pName;
       let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;

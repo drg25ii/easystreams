@@ -667,7 +667,7 @@ const providers = {
 
 const builder = new addonBuilder({
     id: 'org.bestia.easystreams',
-    version: '1.0.56',
+    version: '1.1.0',
     name: 'Easy Streams',
     description: 'Italian Streams providers',
     catalogs: [],
@@ -804,7 +804,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                         url: s.url,
                         behaviorHints: {
                             ...(s.behaviorHints || {}),
-                            notWebReady: true,
+                            notWebReady: false,
                             bingeGroup: name // Consistent grouping by provider name
                         },
                         language: s.language

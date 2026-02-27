@@ -76,8 +76,8 @@ function formatStream(stream, providerName) {
         behaviorHints.proxyHeaders.request = finalHeaders;
         // Also support "headers" in behaviorHints directly (Stremio extension)
         behaviorHints.headers = finalHeaders;
-        // Ensure notWebReady is true when using proxyHeaders
-        behaviorHints.notWebReady = true;
+        // Explicitly keep web playback enabled
+        behaviorHints.notWebReady = false;
     }
 
     const finalName = pName;
