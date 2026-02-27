@@ -414,6 +414,37 @@ function getCanonicalCacheMediaType(type) {
     return String(type).toLowerCase() === 'movie' ? 'movie' : 'tv';
 }
 
+function isHttpsMp4Url(rawUrl) {
+    const url = String(rawUrl || '').trim();
+    if (!url) return false;
+
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:') return false;
+        return parsed.pathname.toLowerCase().endsWith('.mp4');
+    } catch {
+        return /^https:\/\/.+\.mp4(?:[?#].*)?$/i.test(url);
+    }
+}
+
+function shouldMarkStreamAsNotWebReady(stream) {
+    const behaviorHints = stream?.behaviorHints || {};
+    const proxyHeaders = behaviorHints.proxyHeaders?.request;
+    if (proxyHeaders && typeof proxyHeaders === 'object' && Object.keys(proxyHeaders).length > 0) {
+        return true;
+    }
+
+    const headers = stream?.headers || behaviorHints.headers;
+    if (headers && typeof headers === 'object' && Object.keys(headers).length > 0) {
+        return true;
+    }
+
+    if (behaviorHints.notWebReady === true) return true;
+    if (behaviorHints.notWebReady === false) return false;
+
+    return !isHttpsMp4Url(stream?.url);
+}
+
 function mergeDistinctStrings(base = [], incoming = []) {
     const merged = [...(Array.isArray(base) ? base : []), ...(Array.isArray(incoming) ? incoming : [])]
         .map((s) => String(s || '').trim())
@@ -804,7 +835,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                         url: s.url,
                         behaviorHints: {
                             ...(s.behaviorHints || {}),
-                            notWebReady: false,
+                            notWebReady: shouldMarkStreamAsNotWebReady(s),
                             bingeGroup: name // Consistent grouping by provider name
                         },
                         language: s.language

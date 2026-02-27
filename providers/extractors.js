@@ -7134,7 +7134,7 @@ var require_loadm = __commonJS({
                     "Referer": baseUrl
                   }
                 },
-                notWebReady: false
+                notWebReady: true
               }
             });
           }
@@ -7152,7 +7152,7 @@ var require_loadm = __commonJS({
                     "Referer": baseUrl
                   }
                 },
-                notWebReady: false
+                notWebReady: true
               }
             });
           }

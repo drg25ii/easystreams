@@ -1,3 +1,22 @@
+function isHttpsMp4Url(rawUrl) {
+    const url = String(rawUrl || '').trim();
+    if (!url) return false;
+
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:') return false;
+        return parsed.pathname.toLowerCase().endsWith('.mp4');
+    } catch {
+        return /^https:\/\/.+\.mp4(?:[?#].*)?$/i.test(url);
+    }
+}
+
+function shouldSetNotWebReady(url, headers, behaviorHints = {}) {
+    const proxyHeaders = behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request;
+    if (proxyHeaders && Object.keys(proxyHeaders).length > 0) return true;
+    if (headers && Object.keys(headers).length > 0) return true;
+    return !isHttpsMp4Url(url);
+}
 
 function formatStream(stream, providerName) {
     // 1. Filter MixDrop (removed from shared formatter, handled in Stremio addon separately)
@@ -76,9 +95,9 @@ function formatStream(stream, providerName) {
         behaviorHints.proxyHeaders.request = finalHeaders;
         // Also support "headers" in behaviorHints directly (Stremio extension)
         behaviorHints.headers = finalHeaders;
-        // Explicitly keep web playback enabled
-        behaviorHints.notWebReady = false;
     }
+
+    behaviorHints.notWebReady = shouldSetNotWebReady(stream.url, finalHeaders, behaviorHints);
 
     const finalName = pName;
     let finalTitle = `📁 ${stream.title || 'Stream'}`;

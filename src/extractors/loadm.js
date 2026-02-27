@@ -81,7 +81,7 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
                             'Referer': baseUrl
                         }
                     },
-                    notWebReady: false
+                    notWebReady: true
                 }
             });
         }
@@ -100,7 +100,7 @@ async function extractLoadm(playerUrl, referer = 'guardoserie.horse') {
                             'Referer': baseUrl
                         }
                     },
-                    notWebReady: false
+                    notWebReady: true
                 }
             });
         }

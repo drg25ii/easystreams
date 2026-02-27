@@ -7137,7 +7137,7 @@ var require_loadm = __commonJS({
                     "Referer": baseUrl
                   }
                 },
-                notWebReady: false
+                notWebReady: true
               }
             });
           }
@@ -7155,7 +7155,7 @@ var require_loadm = __commonJS({
                     "Referer": baseUrl
                   }
                 },
-                notWebReady: false
+                notWebReady: true
               }
             });
           }
@@ -7566,6 +7566,23 @@ var require_tmdb_helper = __commonJS({
 // src/formatter.js
 var require_formatter = __commonJS({
   "src/formatter.js"(exports2, module2) {
+    function isHttpsMp4Url(rawUrl) {
+      const url = String(rawUrl || "").trim();
+      if (!url) return false;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "https:") return false;
+        return parsed.pathname.toLowerCase().endsWith(".mp4");
+      } catch (e) {
+        return /^https:\/\/.+\.mp4(?:[?#].*)?$/i.test(url);
+      }
+    }
+    function shouldSetNotWebReady(url, headers, behaviorHints = {}) {
+      const proxyHeaders = behaviorHints.proxyHeaders && behaviorHints.proxyHeaders.request;
+      if (proxyHeaders && Object.keys(proxyHeaders).length > 0) return true;
+      if (headers && Object.keys(headers).length > 0) return true;
+      return !isHttpsMp4Url(url);
+    }
     function formatStream(stream, providerName) {
       let quality = stream.quality || "";
       if (quality === "2160p") quality = "\u{1F525}4K UHD";
@@ -7605,8 +7622,8 @@ var require_formatter = __commonJS({
         behaviorHints.proxyHeaders = behaviorHints.proxyHeaders || {};
         behaviorHints.proxyHeaders.request = finalHeaders;
         behaviorHints.headers = finalHeaders;
-        behaviorHints.notWebReady = false;
       }
+      behaviorHints.notWebReady = shouldSetNotWebReady(stream.url, finalHeaders, behaviorHints);
       const finalName = pName;
       let finalTitle = `\u{1F4C1} ${stream.title || "Stream"}`;
       if (desc) finalTitle += ` | ${desc}`;
