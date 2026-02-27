@@ -7845,7 +7845,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         const isPartialMatch = nResult.includes(nTitle) || nOrig && nResult.includes(nOrig);
         if (isExactMatch || isPartialMatch) {
           try {
-            const pageRes = yield fetch(getProxiedUrl(result.url), { headers: {
+            const pageRes = yield fetch(result.url, { headers: {
               "User-Agent": USER_AGENT,
               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
               "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -7896,7 +7896,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
       }
       let episodeUrl = targetUrl;
       if (type === "tv" || type === "series") {
-        const pageRes = yield fetch(getProxiedUrl(targetUrl), { headers: {
+        const pageRes = yield fetch(targetUrl, { headers: {
           "User-Agent": USER_AGENT,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -7912,7 +7912,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         }
       }
       console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-      const finalRes = yield fetch(getProxiedUrl(episodeUrl), { headers: {
+      const finalRes = yield fetch(episodeUrl, { headers: {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -7924,7 +7924,7 @@ function getStreams(id, type, season, episode, providerContext = null) {
         const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage(finalHtml, season, episode);
         if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
           console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-          const retryRes = yield fetch(getProxiedUrl(fallbackEpisodeUrl), { headers: {
+          const retryRes = yield fetch(fallbackEpisodeUrl, { headers: {
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",

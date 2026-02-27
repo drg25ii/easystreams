@@ -287,7 +287,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             if (isExactMatch || isPartialMatch) {
                 // Verify year in the page
                 try {
-                    const pageRes = await fetch(getProxiedUrl(result.url), { headers: { 
+                    const pageRes = await fetch(result.url, { headers: { 
                         'User-Agent': USER_AGENT,
                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                         'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -354,7 +354,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
         let episodeUrl = targetUrl;
         if (type === 'tv' || type === 'series') {
-            const pageRes = await fetch(getProxiedUrl(targetUrl), { headers: { 
+            const pageRes = await fetch(targetUrl, { headers: { 
                 'User-Agent': USER_AGENT,
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -371,7 +371,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         }
 
         console.log(`[Guardoserie] Found episode/movie URL: ${episodeUrl}`);
-        const finalRes = await fetch(getProxiedUrl(episodeUrl), { headers: { 
+        const finalRes = await fetch(episodeUrl, { headers: { 
             'User-Agent': USER_AGENT,
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -386,7 +386,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             const fallbackEpisodeUrl = extractEpisodeUrlFromSeriesPage(finalHtml, season, episode);
             if (fallbackEpisodeUrl && fallbackEpisodeUrl !== episodeUrl) {
                 console.log(`[Guardoserie] Fallback to derived episode URL: ${fallbackEpisodeUrl}`);
-                const retryRes = await fetch(getProxiedUrl(fallbackEpisodeUrl), { headers: {
+                const retryRes = await fetch(fallbackEpisodeUrl, { headers: {
                     'User-Agent': USER_AGENT,
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
