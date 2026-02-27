@@ -533,6 +533,12 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     // Normalize titles
     const normTitle = title.toLowerCase().trim();
     const normOriginal = originalTitle ? originalTitle.toLowerCase().trim() : "";
+    const movieSubtitleHints = (!isTv && season === 1)
+        ? [...new Set([
+            ...extractMovieSubtitleHints([title, originalTitle]),
+            ...extractMovieSubtitleHints((metadata.mappedTitleHints || []).slice(0, 20))
+        ])]
+        : [];
 
     // Filter by Year if available (only for Season 1 or Movies)
     // Note: c.date is populated only for top candidates via enrichTopCandidates
@@ -633,7 +639,11 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                         }
                     }
 
-                    if (isSimilar || isSpecialMatch) {
+                    const hasSubtitleHintMatch =
+                        movieSubtitleHints.length > 0 &&
+                        candidateMatchesMovieSubtitleHints(c, movieSubtitleHints);
+
+                    if (isSimilar || isSpecialMatch || hasSubtitleHintMatch) {
                         // console.log(`[AnimeWorld] Keeping "${c.title}" despite missing date (Similarity/Special Match)`);
                         return true;
                     }
@@ -831,16 +841,13 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
     if (exactMatch && season === 1) return exactMatch;
 
     if (!isTv && season === 1) {
-        const movieSubtitleHints = extractMovieSubtitleHints([
-            title,
-            originalTitle,
-            ...((metadata.mappedTitleHints || []).slice(0, 20))
-        ]);
         if (movieSubtitleHints.length > 0) {
-            candidates = candidates.filter(c => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
-            if (candidates.length === 0) {
-                console.log(`[AnimeWorld] Movie subtitle guard rejected all candidates for: ${title}`);
-                return null;
+            const subtitleGuardCandidates = candidates.filter(c => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
+            if (subtitleGuardCandidates.length > 0) {
+                candidates = subtitleGuardCandidates;
+            } else {
+                // Guard should improve precision, but must not zero out all movie candidates.
+                console.log(`[AnimeWorld] Movie subtitle guard rejected all candidates for: ${title}. Falling back to unguarded movie candidates.`);
             }
         }
     }
@@ -874,8 +881,20 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
                 }
 
                 if (subMatch) {
-                    // Verify with similarity check to be safe
-                    if (checkSimilarity(subMatch.title, title) || checkSimilarity(subMatch.title, originalTitle)) {
+                    // Keep subtitle matches when the franchise/base-title tokens align,
+                    // even if strict similarity is too conservative for localized titles.
+                    const baseTitle = parts.slice(0, -1).join(':').trim() || title;
+                    const baseTokens = tokenizeLooseText(baseTitle);
+                    const subTokens = tokenizeLooseText(String(subMatch.title || ""));
+                    const baseOverlap = baseTokens.filter(t => subTokens.includes(t)).length;
+                    const minBaseOverlap = Math.max(1, Math.ceil(Math.min(baseTokens.length, 4) * 0.5));
+                    const hasBaseAlignment = baseTokens.length === 0 ? true : baseOverlap >= minBaseOverlap;
+
+                    if (
+                        hasBaseAlignment ||
+                        checkSimilarity(subMatch.title, title) ||
+                        checkSimilarity(subMatch.title, originalTitle)
+                    ) {
                         return subMatch;
                     }
                 }
@@ -1553,6 +1572,36 @@ async function getStreams(id, type, season, episode, providedMetadata = null, pr
         }
 
         const isMovie = (metadata.genres && metadata.genres.some(g => g.name === 'Movie')) || season === 0 || type === 'movie';
+
+        // Strategy 1.5: Mapping API title-hints search (high priority for movies/ambiguous titles).
+        if (candidates.length === 0 && Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+            const hintQueries = [...new Set(
+                metadata.mappedTitleHints
+                    .map((h) => String(h || "").trim())
+                    .filter((h) => h.length >= 3)
+            )].slice(0, 10);
+
+            const hintCandidates = [];
+            for (const hint of hintQueries) {
+                console.log(`[AnimeWorld] Mapping hint search: ${hint}`);
+                const res = await searchAnime(hint);
+                if (!Array.isArray(res) || res.length === 0) continue;
+
+                const validRes = res.filter((c) =>
+                    checkSimilarity(c.title, hint) ||
+                    checkSimilarity(c.title, title) ||
+                    checkSimilarity(c.title, originalTitle) ||
+                    isRelevantByLooseMatch(c.title, [hint, title, originalTitle])
+                );
+                if (validRes.length > 0) {
+                    hintCandidates.push(...validRes);
+                }
+            }
+
+            if (hintCandidates.length > 0) {
+                candidates = hintCandidates.filter((v, i, a) => a.findIndex(t => (t.href === v.href)) === i);
+            }
+        }
 
         // Strategy 2: Standard Title Search
         if (candidates.length === 0) {

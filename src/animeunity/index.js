@@ -606,10 +606,12 @@ function findBestMatch(candidates, title, originalTitle, season, metadata, optio
             ...((metadata.mappedTitleHints || []).slice(0, 20))
         ]);
         if (movieSubtitleHints.length > 0) {
-            filteredCandidates = filteredCandidates.filter(c => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
-            if (filteredCandidates.length === 0) {
-                console.log(`[AnimeUnity] Movie subtitle guard rejected all candidates for: ${title}`);
-                return null;
+            const subtitleGuardCandidates = filteredCandidates.filter(c => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
+            if (subtitleGuardCandidates.length > 0) {
+                filteredCandidates = subtitleGuardCandidates;
+            } else {
+                // Guard should improve precision, but must not zero out all movie candidates.
+                console.log(`[AnimeUnity] Movie subtitle guard rejected all candidates for: ${title}. Falling back to unguarded movie candidates.`);
             }
         }
     }
@@ -1244,6 +1246,43 @@ async function getStreams(id, type, season, episode, providerContext = null) {
         }
 
         const isMovie = (metadata.genres && metadata.genres.some(g => g.name === 'Movie')) || season === 0 || type === 'movie';
+
+        // Strategy 1.5: Mapping API title-hints search (high priority for movies/ambiguous titles).
+        if (candidates.length === 0 && Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+            const hintQueries = [...new Set(
+                metadata.mappedTitleHints
+                    .map((h) => String(h || "").trim())
+                    .filter((h) => h.length >= 3)
+            )].slice(0, 10);
+
+            const hintCandidates = [];
+            for (const hint of hintQueries) {
+                console.log(`[AnimeUnity] Mapping hint search: ${hint}`);
+                const res = await searchAnime(hint);
+                if (!Array.isArray(res) || res.length === 0) continue;
+
+                const validRes = res.filter((c) => {
+                    const cTitle = String(c.title || "");
+                    const cTitleEn = String(c.title_eng || "");
+                    return (
+                        checkSimilarity(cTitle, hint) ||
+                        checkSimilarity(cTitleEn, hint) ||
+                        checkSimilarity(cTitle, title) ||
+                        checkSimilarity(cTitleEn, title) ||
+                        checkSimilarity(cTitle, originalTitle) ||
+                        checkSimilarity(cTitleEn, originalTitle) ||
+                        isRelevantByLooseMatch(`${cTitle} ${cTitleEn}`.trim(), [hint, title, originalTitle])
+                    );
+                });
+                if (validRes.length > 0) {
+                    hintCandidates.push(...validRes);
+                }
+            }
+
+            if (hintCandidates.length > 0) {
+                candidates = hintCandidates.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+            }
+        }
 
         if (candidates.length === 0) {
             console.log(`[AnimeUnity] Standard search: ${title}`);

@@ -629,6 +629,37 @@ function isMeaningfulSeasonName(name) {
     return true;
 }
 
+function hasUsefulMappingSignals(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+
+    const numericIdFields = ['tmdbId', 'kitsuId', 'malId', 'anilistId', 'anidbId', 'anisearchId', 'bangumiId', 'livechartId'];
+    for (const field of numericIdFields) {
+        const n = Number.parseInt(payload[field], 10);
+        if (Number.isInteger(n) && n > 0) return true;
+    }
+
+    const textIdFields = ['tvdbId', 'seasonName', 'animePlanetId'];
+    for (const field of textIdFields) {
+        const value = String(payload[field] || '').trim();
+        if (!value) continue;
+        if (field === 'seasonName' && !isMeaningfulSeasonName(value)) continue;
+        return true;
+    }
+
+    if (Array.isArray(payload.titleHints) && payload.titleHints.some((x) => String(x || '').trim().length > 0)) {
+        return true;
+    }
+
+    if (Array.isArray(payload.mappedSeasons) && payload.mappedSeasons.some((x) => Number.isInteger(Number.parseInt(x, 10)) && Number.parseInt(x, 10) > 0)) {
+        return true;
+    }
+
+    const parsedSeriesCount = Number.parseInt(payload.seriesSeasonCount, 10);
+    if (Number.isInteger(parsedSeriesCount) && parsedSeriesCount > 0) return true;
+
+    return false;
+}
+
 function applyMappingHintsToContext(context, payload) {
     if (!context || !payload || typeof payload !== 'object') return;
 
@@ -741,13 +772,16 @@ async function resolveProviderRequestContext(type, providerId, season) {
         episodeMode: null,
         mappedSeasons: [],
         seriesSeasonCount: null,
+        mappingLookupMiss: false,
         canonicalSeason: Number.isInteger(season) ? season : Number.parseInt(season, 10) || 1
     };
 
     const idStr = String(providerId || '').trim();
+    const isImdbId = /^tt\d+$/i.test(idStr);
     const shouldFetchMappingApi =
         type === 'anime' ||
         idStr.startsWith('kitsu:') ||
+        isImdbId ||
         ENABLE_SERIES_MAPPING_LOOKUP;
 
     try {
@@ -775,15 +809,18 @@ async function resolveProviderRequestContext(type, providerId, season) {
         } else if (/^tt\d+$/i.test(idStr)) {
             context.idType = 'imdb';
             context.imdbId = idStr;
+            let mappingSignalsFound = false;
 
             if (shouldFetchMappingApi) {
                 const byImdb = await fetchMappingByRoute('by-imdb', idStr, context.requestedSeason);
                 if (byImdb) {
                     applyMappingHintsToContext(context, byImdb);
+                    mappingSignalsFound = hasUsefulMappingSignals(byImdb);
                 }
             }
+            context.mappingLookupMiss = shouldFetchMappingApi && !mappingSignalsFound;
 
-            if (!context.tmdbId) {
+            if (!context.tmdbId && !context.mappingLookupMiss) {
                 const fallbackTmdbId = await fetchTmdbIdFromImdbForCanonicalKey(idStr);
                 if (fallbackTmdbId !== null && fallbackTmdbId !== undefined) {
                     context.tmdbId = String(fallbackTmdbId);
@@ -888,6 +925,12 @@ function isLikelyAnimeRequest(type, providerId, requestContext) {
 }
 
 async function resolveAnimeRoutingFlag(type, providerId, requestContext) {
+    // For IMDb IDs with no usable mapping signals, avoid anime auto-routing.
+    // This prevents false-positive anime matches from TMDB/find fallbacks.
+    if (String(requestContext?.idType || '').toLowerCase() === 'imdb' && requestContext?.mappingLookupMiss === true) {
+        return false;
+    }
+
     if (isLikelyAnimeRequest(type, providerId, requestContext)) {
         return true;
     }
@@ -909,10 +952,15 @@ function getProviderExecutionOrder(type, providerId, requestContext, animeRoutin
     const likelyAnime = typeof animeRoutingFlag === 'boolean'
         ? animeRoutingFlag
         : isLikelyAnimeRequest(normalizedType, providerId, requestContext);
+    const forceNonAnimeForImdbMappingMiss =
+        String(requestContext?.idType || '').toLowerCase() === 'imdb' &&
+        requestContext?.mappingLookupMiss === true;
     let plan;
 
     if (normalizedType === 'movie') {
-        if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
+        if (forceNonAnimeForImdbMappingMiss) {
+            plan = ['streamingcommunity', 'guardahd', 'guardoserie'];
+        } else if (likelyAnime || ENABLE_ANIME_FALLBACK_ON_MOVIES) {
             // For anime-like movies avoid StreamingCommunity noise/404s.
             plan = ['guardoserie', 'animeunity', 'animeworld'];
         } else {

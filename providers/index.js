@@ -8148,10 +8148,11 @@ var require_animeunity = __commonJS({
           ...(metadata.mappedTitleHints || []).slice(0, 20)
         ]);
         if (movieSubtitleHints.length > 0) {
-          filteredCandidates = filteredCandidates.filter((c) => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
-          if (filteredCandidates.length === 0) {
-            console.log(`[AnimeUnity] Movie subtitle guard rejected all candidates for: ${title}`);
-            return null;
+          const subtitleGuardCandidates = filteredCandidates.filter((c) => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
+          if (subtitleGuardCandidates.length > 0) {
+            filteredCandidates = subtitleGuardCandidates;
+          } else {
+            console.log(`[AnimeUnity] Movie subtitle guard rejected all candidates for: ${title}. Falling back to unguarded movie candidates.`);
           }
         }
       }
@@ -8627,6 +8628,28 @@ var require_animeunity = __commonJS({
             }
           }
           const isMovie = metadata.genres && metadata.genres.some((g) => g.name === "Movie") || season === 0 || type === "movie";
+          if (candidates.length === 0 && Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+            const hintQueries = [...new Set(
+              metadata.mappedTitleHints.map((h) => String(h || "").trim()).filter((h) => h.length >= 3)
+            )].slice(0, 10);
+            const hintCandidates = [];
+            for (const hint of hintQueries) {
+              console.log(`[AnimeUnity] Mapping hint search: ${hint}`);
+              const res = yield searchAnime(hint);
+              if (!Array.isArray(res) || res.length === 0) continue;
+              const validRes = res.filter((c) => {
+                const cTitle = String(c.title || "");
+                const cTitleEn = String(c.title_eng || "");
+                return checkSimilarity(cTitle, hint) || checkSimilarity(cTitleEn, hint) || checkSimilarity(cTitle, title) || checkSimilarity(cTitleEn, title) || checkSimilarity(cTitle, originalTitle) || checkSimilarity(cTitleEn, originalTitle) || isRelevantByLooseMatch(`${cTitle} ${cTitleEn}`.trim(), [hint, title, originalTitle]);
+              });
+              if (validRes.length > 0) {
+                hintCandidates.push(...validRes);
+              }
+            }
+            if (hintCandidates.length > 0) {
+              candidates = hintCandidates.filter((v, i, a) => a.findIndex((t) => t.id === v.id) === i);
+            }
+          }
           if (candidates.length === 0) {
             console.log(`[AnimeUnity] Standard search: ${title}`);
             candidates = yield searchAnime(title);
@@ -9878,6 +9901,10 @@ var require_animeworld = __commonJS({
       }
       const normTitle = title.toLowerCase().trim();
       const normOriginal = originalTitle ? originalTitle.toLowerCase().trim() : "";
+      const movieSubtitleHints = !isTv && season === 1 ? [.../* @__PURE__ */ new Set([
+        ...extractMovieSubtitleHints([title, originalTitle]),
+        ...extractMovieSubtitleHints((metadata.mappedTitleHints || []).slice(0, 20))
+      ])] : [];
       const metaYear = metadata.first_air_date ? parseInt(metadata.first_air_date.substring(0, 4)) : metadata.release_date ? parseInt(metadata.release_date.substring(0, 4)) : null;
       const preYearExactMatches = candidates.filter((c) => {
         const t = (c.title || "").toLowerCase().trim();
@@ -9945,7 +9972,8 @@ var require_animeworld = __commonJS({
                   }
                 }
               }
-              if (isSimilar || isSpecialMatch) {
+              const hasSubtitleHintMatch = movieSubtitleHints.length > 0 && candidateMatchesMovieSubtitleHints(c, movieSubtitleHints);
+              if (isSimilar || isSpecialMatch || hasSubtitleHintMatch) {
                 return true;
               }
             }
@@ -10075,16 +10103,12 @@ var require_animeworld = __commonJS({
       });
       if (exactMatch && season === 1) return exactMatch;
       if (!isTv && season === 1) {
-        const movieSubtitleHints = extractMovieSubtitleHints([
-          title,
-          originalTitle,
-          ...(metadata.mappedTitleHints || []).slice(0, 20)
-        ]);
         if (movieSubtitleHints.length > 0) {
-          candidates = candidates.filter((c) => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
-          if (candidates.length === 0) {
-            console.log(`[AnimeWorld] Movie subtitle guard rejected all candidates for: ${title}`);
-            return null;
+          const subtitleGuardCandidates = candidates.filter((c) => candidateMatchesMovieSubtitleHints(c, movieSubtitleHints));
+          if (subtitleGuardCandidates.length > 0) {
+            candidates = subtitleGuardCandidates;
+          } else {
+            console.log(`[AnimeWorld] Movie subtitle guard rejected all candidates for: ${title}. Falling back to unguarded movie candidates.`);
           }
         }
       }
@@ -10110,7 +10134,13 @@ var require_animeworld = __commonJS({
               }
             }
             if (subMatch) {
-              if (checkSimilarity(subMatch.title, title) || checkSimilarity(subMatch.title, originalTitle)) {
+              const baseTitle = parts.slice(0, -1).join(":").trim() || title;
+              const baseTokens = tokenizeLooseText(baseTitle);
+              const subTokens = tokenizeLooseText(String(subMatch.title || ""));
+              const baseOverlap = baseTokens.filter((t) => subTokens.includes(t)).length;
+              const minBaseOverlap = Math.max(1, Math.ceil(Math.min(baseTokens.length, 4) * 0.5));
+              const hasBaseAlignment = baseTokens.length === 0 ? true : baseOverlap >= minBaseOverlap;
+              if (hasBaseAlignment || checkSimilarity(subMatch.title, title) || checkSimilarity(subMatch.title, originalTitle)) {
                 return subMatch;
               }
             }
@@ -10587,6 +10617,26 @@ var require_animeworld = __commonJS({
             }
           }
           const isMovie = metadata.genres && metadata.genres.some((g) => g.name === "Movie") || season === 0 || type === "movie";
+          if (candidates.length === 0 && Array.isArray(metadata.mappedTitleHints) && metadata.mappedTitleHints.length > 0) {
+            const hintQueries = [...new Set(
+              metadata.mappedTitleHints.map((h) => String(h || "").trim()).filter((h) => h.length >= 3)
+            )].slice(0, 10);
+            const hintCandidates = [];
+            for (const hint of hintQueries) {
+              console.log(`[AnimeWorld] Mapping hint search: ${hint}`);
+              const res = yield searchAnime(hint);
+              if (!Array.isArray(res) || res.length === 0) continue;
+              const validRes = res.filter(
+                (c) => checkSimilarity(c.title, hint) || checkSimilarity(c.title, title) || checkSimilarity(c.title, originalTitle) || isRelevantByLooseMatch(c.title, [hint, title, originalTitle])
+              );
+              if (validRes.length > 0) {
+                hintCandidates.push(...validRes);
+              }
+            }
+            if (hintCandidates.length > 0) {
+              candidates = hintCandidates.filter((v, i, a) => a.findIndex((t) => t.href === v.href) === i);
+            }
+          }
           if (candidates.length === 0) {
             console.log(`[AnimeWorld] Standard search: ${title}`);
             candidates = yield searchAnime(title);
@@ -12981,6 +13031,30 @@ function mergeDistinctStrings(base = [], incoming = []) {
   const merged = [...Array.isArray(base) ? base : [], ...Array.isArray(incoming) ? incoming : []].map((s) => String(s || "").trim()).filter(Boolean);
   return [...new Set(merged)];
 }
+function hasUsefulMappingSignals(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  const numericIdFields = ["tmdbId", "kitsuId", "malId", "anilistId", "anidbId", "anisearchId", "bangumiId", "livechartId"];
+  for (const field of numericIdFields) {
+    const n = Number.parseInt(payload[field], 10);
+    if (Number.isInteger(n) && n > 0) return true;
+  }
+  const textIdFields = ["tvdbId", "seasonName", "animePlanetId"];
+  for (const field of textIdFields) {
+    const value = String(payload[field] || "").trim();
+    if (!value) continue;
+    if (field === "seasonName" && !isMeaningfulSeasonName(value)) continue;
+    return true;
+  }
+  if (Array.isArray(payload.titleHints) && payload.titleHints.some((x) => String(x || "").trim().length > 0)) {
+    return true;
+  }
+  if (Array.isArray(payload.mappedSeasons) && payload.mappedSeasons.some((x) => Number.isInteger(Number.parseInt(x, 10)) && Number.parseInt(x, 10) > 0)) {
+    return true;
+  }
+  const parsedSeriesCount = Number.parseInt(payload.seriesSeasonCount, 10);
+  if (Number.isInteger(parsedSeriesCount) && parsedSeriesCount > 0) return true;
+  return false;
+}
 function applyMappingHintsToContext(context, payload) {
   if (!context || !payload || typeof payload !== "object") return;
   const tmdbCandidate = String(payload.tmdbId || "").trim();
@@ -12988,6 +13062,8 @@ function applyMappingHintsToContext(context, payload) {
     context.tmdbId = tmdbCandidate.split(":")[1];
   } else if (/^\d+$/.test(tmdbCandidate)) {
     context.tmdbId = tmdbCandidate;
+  } else if (/^tt\d+$/i.test(tmdbCandidate) && !context.imdbId) {
+    context.imdbId = tmdbCandidate;
   }
   const imdbCandidate = String(payload.imdbId || "").trim();
   if (/^tt\d+$/i.test(imdbCandidate)) {
@@ -13097,6 +13173,7 @@ function resolveProviderRequestContext(id, type, season) {
       episodeMode: null,
       mappedSeasons: [],
       seriesSeasonCount: null,
+      mappingLookupMiss: false,
       canonicalSeason: Number.isInteger(season) ? season : 1
     };
     let rawId = String(id || "");
@@ -13130,11 +13207,14 @@ function resolveProviderRequestContext(id, type, season) {
       } else if (/^tt\d+$/i.test(idStr)) {
         context.idType = "imdb";
         context.imdbId = idStr;
+        let mappingSignalsFound = false;
         const byImdb = yield fetchMappingByRoute("by-imdb", idStr, context.requestedSeason);
         if (byImdb) {
           applyMappingHintsToContext(context, byImdb);
+          mappingSignalsFound = hasUsefulMappingSignals(byImdb);
         }
-        if (!context.tmdbId) {
+        context.mappingLookupMiss = !mappingSignalsFound;
+        if (!context.tmdbId && !context.mappingLookupMiss) {
           const fallbackTmdbId = yield fetchTmdbIdFromImdb(idStr, String(type || "").toLowerCase());
           if (fallbackTmdbId !== null && fallbackTmdbId !== void 0) {
             context.tmdbId = String(fallbackTmdbId);
@@ -13157,6 +13237,18 @@ function resolveProviderRequestContext(id, type, season) {
     context.canonicalSeason = computeCanonicalSeason(context.requestedSeason, context.mappedSeason, context);
     return context;
   });
+}
+function isLikelyAnimeRequest(type, providerId, requestContext) {
+  const normalizedType = String(type || "").toLowerCase();
+  if (normalizedType === "anime") return true;
+  const normalizedProviderId = String(providerId || "").trim().toLowerCase();
+  if (normalizedProviderId.startsWith("kitsu:")) return true;
+  const contextIdType = String((requestContext == null ? void 0 : requestContext.idType) || "").toLowerCase();
+  if (contextIdType === "kitsu") return true;
+  if ((requestContext == null ? void 0 : requestContext.longSeries) === true && String((requestContext == null ? void 0 : requestContext.episodeMode) || "").toLowerCase() === "absolute") {
+    return true;
+  }
+  return false;
 }
 function buildProviderRequestContext(context) {
   if (!context) return null;
@@ -13189,34 +13281,66 @@ function getStreams(id, type, season, episode) {
     const providerContext = yield resolveProviderRequestContext(id, normalizedType, normalizedSeason);
     const sharedContext = buildProviderRequestContext(providerContext);
     const promises = [];
-    promises.push(
-      animeunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "AnimeUnity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AnimeUnity", error: e, status: "rejected" }))
-    );
-    promises.push(
-      streamingcommunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "StreamingCommunity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "StreamingCommunity", error: e, status: "rejected" }))
-    );
+    const likelyAnime = isLikelyAnimeRequest(normalizedType, id, providerContext);
+    const forceNonAnimeForImdbMappingMiss = String((providerContext == null ? void 0 : providerContext.idType) || "").toLowerCase() === "imdb" && (providerContext == null ? void 0 : providerContext.mappingLookupMiss) === true;
+    const selectedProviders = [];
     if (normalizedType === "movie") {
-      promises.push(
-        guardahd.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode).then((s) => ({ provider: "GuardaHD", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "GuardaHD", error: e, status: "rejected" }))
-      );
-      promises.push(
-        guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardoserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardoserie", error: e, status: "rejected" }))
-      );
-    }
-    if (normalizedType === "tv" || normalizedType === "series" || normalizedType === "anime") {
-      promises.push(
-        guardaserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardaserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardaserie", error: e, status: "rejected" }))
-      );
-      promises.push(
-        guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardoserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardoserie", error: e, status: "rejected" }))
-      );
-      promises.push(
-        animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext).then((s) => ({ provider: "AnimeWorld", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AnimeWorld", error: e, status: "rejected" }))
-      );
+      if (forceNonAnimeForImdbMappingMiss) {
+        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie");
+      } else if (likelyAnime) {
+        selectedProviders.push("guardoserie", "animeunity", "animeworld");
+      } else {
+        selectedProviders.push("streamingcommunity", "guardahd", "guardoserie");
+      }
+    } else if (normalizedType === "anime") {
+      selectedProviders.push("animeunity", "animeworld", "guardaserie");
+    } else if (normalizedType === "tv" || normalizedType === "series") {
+      if (forceNonAnimeForImdbMappingMiss) {
+        selectedProviders.push("streamingcommunity", "guardaserie", "guardoserie");
+      } else if (likelyAnime) {
+        selectedProviders.push("guardaserie", "guardoserie", "animeunity", "animeworld");
+      } else {
+        selectedProviders.push("streamingcommunity", "guardaserie", "guardoserie");
+      }
     } else {
-      promises.push(
-        animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext).then((s) => ({ provider: "AnimeWorld", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AnimeWorld", error: e, status: "rejected" }))
-      );
+      selectedProviders.push("streamingcommunity", "guardahd", "guardoserie");
+    }
+    for (const providerName of [...new Set(selectedProviders)]) {
+      if (providerName === "animeunity") {
+        promises.push(
+          animeunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "AnimeUnity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AnimeUnity", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "animeworld") {
+        promises.push(
+          animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext).then((s) => ({ provider: "AnimeWorld", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "AnimeWorld", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "streamingcommunity") {
+        promises.push(
+          streamingcommunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "StreamingCommunity", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "StreamingCommunity", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "guardahd") {
+        promises.push(
+          guardahd.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode).then((s) => ({ provider: "GuardaHD", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "GuardaHD", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "guardaserie") {
+        promises.push(
+          guardaserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardaserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardaserie", error: e, status: "rejected" }))
+        );
+        continue;
+      }
+      if (providerName === "guardoserie") {
+        promises.push(
+          guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext).then((s) => ({ provider: "Guardoserie", streams: s, status: "fulfilled" })).catch((e) => ({ provider: "Guardoserie", error: e, status: "rejected" }))
+        );
+      }
     }
     const results = yield Promise.all(promises);
     for (const result of results) {

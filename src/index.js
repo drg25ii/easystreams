@@ -25,6 +25,37 @@ function mergeDistinctStrings(base = [], incoming = []) {
     return [...new Set(merged)];
 }
 
+function hasUsefulMappingSignals(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+
+    const numericIdFields = ['tmdbId', 'kitsuId', 'malId', 'anilistId', 'anidbId', 'anisearchId', 'bangumiId', 'livechartId'];
+    for (const field of numericIdFields) {
+        const n = Number.parseInt(payload[field], 10);
+        if (Number.isInteger(n) && n > 0) return true;
+    }
+
+    const textIdFields = ['tvdbId', 'seasonName', 'animePlanetId'];
+    for (const field of textIdFields) {
+        const value = String(payload[field] || '').trim();
+        if (!value) continue;
+        if (field === 'seasonName' && !isMeaningfulSeasonName(value)) continue;
+        return true;
+    }
+
+    if (Array.isArray(payload.titleHints) && payload.titleHints.some((x) => String(x || '').trim().length > 0)) {
+        return true;
+    }
+
+    if (Array.isArray(payload.mappedSeasons) && payload.mappedSeasons.some((x) => Number.isInteger(Number.parseInt(x, 10)) && Number.parseInt(x, 10) > 0)) {
+        return true;
+    }
+
+    const parsedSeriesCount = Number.parseInt(payload.seriesSeasonCount, 10);
+    if (Number.isInteger(parsedSeriesCount) && parsedSeriesCount > 0) return true;
+
+    return false;
+}
+
 function applyMappingHintsToContext(context, payload) {
     if (!context || !payload || typeof payload !== 'object') return;
 
@@ -33,6 +64,9 @@ function applyMappingHintsToContext(context, payload) {
         context.tmdbId = tmdbCandidate.split(':')[1];
     } else if (/^\d+$/.test(tmdbCandidate)) {
         context.tmdbId = tmdbCandidate;
+    } else if (/^tt\d+$/i.test(tmdbCandidate) && !context.imdbId) {
+        // Some fallbacks return IMDb where TMDB is expected.
+        context.imdbId = tmdbCandidate;
     }
 
     const imdbCandidate = String(payload.imdbId || '').trim();
@@ -156,6 +190,7 @@ async function resolveProviderRequestContext(id, type, season) {
         episodeMode: null,
         mappedSeasons: [],
         seriesSeasonCount: null,
+        mappingLookupMiss: false,
         canonicalSeason: Number.isInteger(season) ? season : 1
     };
 
@@ -192,11 +227,14 @@ async function resolveProviderRequestContext(id, type, season) {
         } else if (/^tt\d+$/i.test(idStr)) {
             context.idType = 'imdb';
             context.imdbId = idStr;
+            let mappingSignalsFound = false;
             const byImdb = await fetchMappingByRoute('by-imdb', idStr, context.requestedSeason);
             if (byImdb) {
                 applyMappingHintsToContext(context, byImdb);
+                mappingSignalsFound = hasUsefulMappingSignals(byImdb);
             }
-            if (!context.tmdbId) {
+            context.mappingLookupMiss = !mappingSignalsFound;
+            if (!context.tmdbId && !context.mappingLookupMiss) {
                 const fallbackTmdbId = await fetchTmdbIdFromImdb(idStr, String(type || '').toLowerCase());
                 if (fallbackTmdbId !== null && fallbackTmdbId !== undefined) {
                     context.tmdbId = String(fallbackTmdbId);
@@ -221,6 +259,23 @@ async function resolveProviderRequestContext(id, type, season) {
 
     context.canonicalSeason = computeCanonicalSeason(context.requestedSeason, context.mappedSeason, context);
     return context;
+}
+
+function isLikelyAnimeRequest(type, providerId, requestContext) {
+    const normalizedType = String(type || '').toLowerCase();
+    if (normalizedType === 'anime') return true;
+
+    const normalizedProviderId = String(providerId || '').trim().toLowerCase();
+    if (normalizedProviderId.startsWith('kitsu:')) return true;
+
+    const contextIdType = String(requestContext?.idType || '').toLowerCase();
+    if (contextIdType === 'kitsu') return true;
+
+    if (requestContext?.longSeries === true && String(requestContext?.episodeMode || '').toLowerCase() === 'absolute') {
+        return true;
+    }
+
+    return false;
 }
 
 function buildProviderRequestContext(context) {
@@ -254,53 +309,82 @@ async function getStreams(id, type, season, episode) {
     const providerContext = await resolveProviderRequestContext(id, normalizedType, normalizedSeason);
     const sharedContext = buildProviderRequestContext(providerContext);
     const promises = [];
+    const likelyAnime = isLikelyAnimeRequest(normalizedType, id, providerContext);
+    const forceNonAnimeForImdbMappingMiss =
+        String(providerContext?.idType || '').toLowerCase() === 'imdb' &&
+        providerContext?.mappingLookupMiss === true;
 
-    promises.push(
-        animeunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
-            .then(s => ({ provider: 'AnimeUnity', streams: s, status: 'fulfilled' }))
-            .catch(e => ({ provider: 'AnimeUnity', error: e, status: 'rejected' }))
-    );
-    promises.push(
-        streamingcommunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
-            .then(s => ({ provider: 'StreamingCommunity', streams: s, status: 'fulfilled' }))
-            .catch(e => ({ provider: 'StreamingCommunity', error: e, status: 'rejected' }))
-    );
-
+    const selectedProviders = [];
     if (normalizedType === 'movie') {
-        promises.push(
-            guardahd.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode)
-                .then(s => ({ provider: 'GuardaHD', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'GuardaHD', error: e, status: 'rejected' }))
-        );
-        promises.push(
-            guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
-                .then(s => ({ provider: 'Guardoserie', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'Guardoserie', error: e, status: 'rejected' }))
-        );
+        if (forceNonAnimeForImdbMappingMiss) {
+            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie');
+        } else if (likelyAnime) {
+            selectedProviders.push('guardoserie', 'animeunity', 'animeworld');
+        } else {
+            selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie');
+        }
+    } else if (normalizedType === 'anime') {
+        selectedProviders.push('animeunity', 'animeworld', 'guardaserie');
+    } else if (normalizedType === 'tv' || normalizedType === 'series') {
+        if (forceNonAnimeForImdbMappingMiss) {
+            selectedProviders.push('streamingcommunity', 'guardaserie', 'guardoserie');
+        } else if (likelyAnime) {
+            selectedProviders.push('guardaserie', 'guardoserie', 'animeunity', 'animeworld');
+        } else {
+            selectedProviders.push('streamingcommunity', 'guardaserie', 'guardoserie');
+        }
+    } else {
+        selectedProviders.push('streamingcommunity', 'guardahd', 'guardoserie');
     }
 
-    if (normalizedType === 'tv' || normalizedType === 'series' || normalizedType === 'anime') {
-        promises.push(
-            guardaserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
-                .then(s => ({ provider: 'Guardaserie', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'Guardaserie', error: e, status: 'rejected' }))
-        );
-        promises.push(
-            guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
-                .then(s => ({ provider: 'Guardoserie', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'Guardoserie', error: e, status: 'rejected' }))
-        );
-        promises.push(
-            animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext)
-                .then(s => ({ provider: 'AnimeWorld', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'AnimeWorld', error: e, status: 'rejected' }))
-        );
-    } else {
-        promises.push(
-            animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext)
-                .then(s => ({ provider: 'AnimeWorld', streams: s, status: 'fulfilled' }))
-                .catch(e => ({ provider: 'AnimeWorld', error: e, status: 'rejected' }))
-        );
+    for (const providerName of [...new Set(selectedProviders)]) {
+        if (providerName === 'animeunity') {
+            promises.push(
+                animeunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'AnimeUnity', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'AnimeUnity', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'animeworld') {
+            promises.push(
+                animeworld.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, null, sharedContext)
+                    .then(s => ({ provider: 'AnimeWorld', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'AnimeWorld', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'streamingcommunity') {
+            promises.push(
+                streamingcommunity.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'StreamingCommunity', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'StreamingCommunity', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'guardahd') {
+            promises.push(
+                guardahd.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode)
+                    .then(s => ({ provider: 'GuardaHD', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'GuardaHD', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'guardaserie') {
+            promises.push(
+                guardaserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'Guardaserie', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'Guardaserie', error: e, status: 'rejected' }))
+            );
+            continue;
+        }
+        if (providerName === 'guardoserie') {
+            promises.push(
+                guardoserie.getStreams(id, normalizedType, normalizedSeason, normalizedEpisode, sharedContext)
+                    .then(s => ({ provider: 'Guardoserie', streams: s, status: 'fulfilled' }))
+                    .catch(e => ({ provider: 'Guardoserie', error: e, status: 'rejected' }))
+            );
+        }
     }
 
     const results = await Promise.all(promises);
