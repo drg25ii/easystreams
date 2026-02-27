@@ -1042,7 +1042,11 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                     let titleUI = `📁 ${s.originalTitle}\n${s.providerName}`;
                     if (s.description) titleUI += ` | ${s.description}`;
-                    if (s.language) titleUI += `\n🗣️ ${s.language}`;
+                    if (s.language) {
+                        titleUI += `\n🗣️ ${s.language}  🔍EasyStreams`;
+                    } else {
+                        titleUI += `\n🔍EasyStreams`;
+                    }
 
                     return {
                         name: nameUI,
