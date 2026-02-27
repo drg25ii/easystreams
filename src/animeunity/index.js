@@ -305,6 +305,45 @@ function isLooselyRelevant(candidateTitle, targets = []) {
     return targets.some(t => hasLooseOverlap(candidateTitle, t));
 }
 
+function getCandidateTitleVariants(candidate) {
+    const primary = String(candidate?.title || "").trim();
+    const secondary = String(candidate?.title_eng || "").trim();
+    if (!primary && !secondary) return [];
+    if (!primary) return [secondary];
+    if (!secondary) return [primary];
+    if (primary.toLowerCase() === secondary.toLowerCase()) return [primary];
+    return [primary, secondary];
+}
+
+function getBestCandidateTitleVariant(candidate, targets = []) {
+    const variants = getCandidateTitleVariants(candidate);
+    if (variants.length <= 1) return variants[0] || "";
+
+    const refs = Array.isArray(targets)
+        ? targets.map((x) => String(x || "").trim()).filter(Boolean)
+        : [];
+    if (refs.length === 0) return variants[0];
+
+    let best = variants[0];
+    let bestScore = -1;
+
+    for (const variant of variants) {
+        let score = 0;
+        for (const ref of refs) {
+            if (checkSimilarity(variant, ref)) score += 2;
+            if (hasLooseOverlap(variant, ref)) score += 1;
+        }
+        if (score > bestScore) {
+            best = variant;
+            bestScore = score;
+        } else if (score === bestScore && variant.length < best.length) {
+            best = variant;
+        }
+    }
+
+    return best;
+}
+
 function splitTitleForMovieHint(rawTitle) {
     const raw = String(rawTitle || "").trim();
     if (!raw) return { base: "", subtitle: "" };
@@ -1091,14 +1130,14 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             return cNorm === baseTitleNorm || (baseOriginalNorm && cNorm === baseOriginalNorm);
         };
         const hasSeasonSpecificMarkerLocal = (candidate) => {
-            const raw = `${candidate.title || ""} ${candidate.title_eng || ""}`.toLowerCase();
+            const raw = getBestCandidateTitleVariant(candidate, [title, originalTitle]).toLowerCase();
             if (/season|stagione|part|parte|\b\d+\b/.test(raw)) return true;
             if (/\b(arc|saga|chapter|cour)\b|\b\w+(?:-|\s)?hen\b/.test(raw)) return true;
             if (/final\s*season/i.test(raw)) return true;
             return false;
         };
         const isRelevantSeasonCandidateLocal = (candidate, query) => {
-            const candidateCombined = `${candidate.title || ""} ${candidate.title_eng || ""}`.trim();
+            const candidateCombined = getBestCandidateTitleVariant(candidate, [title, originalTitle, query]);
             const matchesMain = (checkSimilarity(candidate.title, title) || checkSimilarity(candidate.title_eng, title)) ||
                 (checkSimilarity(candidate.title, originalTitle) || checkSimilarity(candidate.title_eng, originalTitle)) ||
                 isRelevantByLooseMatch(candidateCombined);
@@ -1264,6 +1303,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                 const validRes = res.filter((c) => {
                     const cTitle = String(c.title || "");
                     const cTitleEn = String(c.title_eng || "");
+                    const bestTitle = getBestCandidateTitleVariant(c, [hint, title, originalTitle]);
                     return (
                         checkSimilarity(cTitle, hint) ||
                         checkSimilarity(cTitleEn, hint) ||
@@ -1271,7 +1311,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                         checkSimilarity(cTitleEn, title) ||
                         checkSimilarity(cTitle, originalTitle) ||
                         checkSimilarity(cTitleEn, originalTitle) ||
-                        isRelevantByLooseMatch(`${cTitle} ${cTitleEn}`.trim(), [hint, title, originalTitle])
+                        isRelevantByLooseMatch(bestTitle, [hint, title, originalTitle])
                     );
                 });
                 if (validRes.length > 0) {
@@ -1293,7 +1333,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
             if (seasonSearchEnabled && candidates.length > 0 && title.includes('-')) {
                 const seasonTokenRegex = new RegExp(`\\b${season}\\b|season\\s*${season}|stagione\\s*${season}|part\\s*${season}|parte\\s*${season}`, "i");
                 const hasRequestedSeasonInStandard = candidates.some(c => {
-                    const raw = `${c.title || ""} ${c.title_eng || ""}`;
+                    const raw = getBestCandidateTitleVariant(c, [title, originalTitle]);
                     return seasonTokenRegex.test(raw);
                 });
 
@@ -1304,7 +1344,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                         const dehyphenCandidates = await searchAnime(dehyphenated);
                         if (dehyphenCandidates && dehyphenCandidates.length > 0) {
                             const hasRequestedSeasonInDehyphen = dehyphenCandidates.some(c => {
-                                const raw = `${c.title || ""} ${c.title_eng || ""}`;
+                                const raw = getBestCandidateTitleVariant(c, [title, originalTitle, dehyphenated]);
                                 return seasonTokenRegex.test(raw);
                             });
                             if (hasRequestedSeasonInDehyphen) {
@@ -1874,7 +1914,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
 
             for (const c of pool) {
                 if (!c) continue;
-                const combined = `${c.title || ""} ${c.title_eng || ""}`;
+                const combined = getBestCandidateTitleVariant(c, [title, originalTitle, ...seasonNameHints]);
                 const hasSeasonToken = seasonTokenRegex.test(combined);
                 const isRelevantSeries =
                     checkSimilarity(c.title, title) ||
@@ -1921,7 +1961,7 @@ async function getStreams(id, type, season, episode, providerContext = null) {
                         const count = getCandidateEpisodeCount(c);
                         if (!count) continue;
 
-                        const combined = `${c.title || ""} ${c.title_eng || ""}`;
+                        const combined = getBestCandidateTitleVariant(c, [title, originalTitle, ...seasonNameHints]);
                         const lower = combined.toLowerCase();
                         if (/\b(movie|film|special|ova|oav|recap)\b/i.test(lower)) continue;
 
