@@ -48,22 +48,26 @@ function formatStream(stream, providerName) {
 
     // Format resolution
     let quality = stream.quality || '';
-    if (quality === '2160p') quality = '🔥4K UHD';
-    else if (quality === '1440p') quality = '✨ QHD';
-    else if (quality === '1080p') quality = '🚀 FHD';
-    else if (quality === '720p') quality = '💿 HD';
-    else if (quality === '576p' || quality === '480p' || quality === '360p' || quality === '240p') quality = '💩 Low Quality';
+    if (quality === '2160p') quality = 'EasyStreams 4K UHD';
+    else if (quality === '1440p') quality = 'EasyStreams QHD';
+    else if (quality === '1080p') quality = 'EasyStreams FHD';
+    else if (quality === '720p') quality = 'EasyStreams HD';
+    else if (quality === '576p' || quality === '480p' || quality === '360p' || quality === '240p') quality = 'EasyStreams SD';
     else if (!quality || ['auto', 'unknown', 'unknow'].includes(String(quality).toLowerCase())) quality = 'Unknow';
 
     // Format title with emoji
     let title = `📁 ${stream.title || 'Stream'}`;
 
-    // Extract language if not present
+   // Extract language if not present
     let language = stream.language;
     if (!language) {
-        if (stream.name && (stream.name.includes('SUB ITA') || stream.name.includes('SUB'))) language = '🇯🇵 🇮🇹';
-        else if (stream.title && (stream.title.includes('SUB ITA') || stream.title.includes('SUB'))) language = '🇯🇵 🇮🇹';
-        else language = '🇮🇹';
+        if (stream.name && (stream.name.includes('SUB ITA') || stream.name.includes('SUB'))) {
+            language = 'Japanese Italian';
+        } else if (stream.title && (stream.title.includes('SUB ITA') || stream.title.includes('SUB'))) {
+            language = 'Japanese Italian';
+        } else {
+            language = 'Italian';
+        }
     }
 
     // Add details
